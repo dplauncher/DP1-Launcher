@@ -185,6 +185,13 @@ html, body {
     0 4px 14px rgba(196,25,43,0.20);
 }
 .topnav-logo svg { width: 22px; height: 22px; }
+.topnav-logo img {
+  width: 30px; height: 30px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6));
+  -webkit-user-drag: none;
+  user-select: none;
+}
 
 /* Menu */
 .topnav-menu { display: flex; align-items: center; gap: 4px; }
@@ -1045,6 +1052,24 @@ html, body {
 }
 .btn-secondary:hover  { background: rgba(255,255,255,0.10); border-color: var(--border-3); }
 .btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-secondary.btn-danger {
+  color: #ff8a8a;
+  background: rgba(196,25,43,0.10);
+  border-color: rgba(196,25,43,0.40);
+}
+.btn-secondary.btn-danger:hover {
+  color: #fff;
+  background: rgba(196,25,43,0.22);
+  border-color: rgba(196,25,43,0.70);
+}
+
+.about-reset {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-1);
+}
+.about-reset .form-subhead { margin-bottom: 4px; }
+.about-reset .settings-help { margin-bottom: 10px; }
 
 .compat-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .compat-note {
@@ -1915,6 +1940,118 @@ body[data-view="settings"] .activity-list-full .activity-item {
   border-radius: 4px;
 }
 button:focus:not(:focus-visible) { outline: none; }
+
+/* ════════════════════════════════════════════════════════════════════
+   12.4) INTERACTIVE GREENVALE MAP  (data-view="map")
+   ════════════════════════════════════════════════════════════════════ */
+.map-view {
+  display: none;
+  grid-area: settings;
+  background: linear-gradient(180deg, rgba(18,20,28,0.92), rgba(12,14,20,0.92));
+  border: 1px solid var(--border-1);
+  border-radius: 18px;
+  padding: 18px 22px 14px;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+body[data-view="map"] .map-view { display: flex; }
+body[data-view="map"] .settings-panel,
+body[data-view="map"] .quote-card,
+body[data-view="map"] .hero,
+body[data-view="map"] .quick-actions,
+body[data-view="map"] .dashboard {
+  display: none !important;
+}
+body[data-view="map"] .home {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  grid-template-areas: "settings";
+  padding: 16px 22px;
+}
+
+.map-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 6px; flex-wrap: wrap;
+}
+.map-head-title {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-display);
+  font-size: 14px; letter-spacing: 0.24em; color: #fff;
+}
+.map-head-title svg { width: 20px; height: 20px; color: var(--red-hi); }
+.map-head-controls { display: flex; align-items: center; gap: 10px; }
+.map-spoilers-toggle { gap: 8px; }
+.map-btn {
+  height: 32px; min-width: 32px; padding: 0 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.map-btn:hover { background: rgba(255,255,255,0.12); border-color: var(--border-3); }
+.map-help {
+  font-size: 11px; letter-spacing: 0.04em;
+  color: var(--text-2);
+  margin: 0 0 10px;
+}
+.map-help kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-2);
+  background: rgba(255,255,255,0.06);
+  font-family: inherit;
+  font-size: 10.5px;
+}
+.map-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0a0b10;
+  border: 1px solid var(--border-1);
+  cursor: grab;
+  user-select: none;
+}
+.map-stage.is-panning { cursor: grabbing; }
+.map-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.map-canvas img {
+  display: block;
+  max-width: none;
+  max-height: none;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.map-loader {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-2);
+  font-size: 12px; letter-spacing: 0.1em;
+  background: rgba(8,10,16,0.7);
+  z-index: 2;
+  pointer-events: none;
+  transition: opacity var(--t-fast);
+}
+.map-loader.hidden { opacity: 0; }
+.map-loader.error { color: #ff8a8a; }
+.map-credit {
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  text-align: right;
+  color: var(--text-2);
+}
+.map-credit a { color: var(--red-hi); text-decoration: none; }
+.map-credit a:hover { text-decoration: underline; }
 
 /* ════════════════════════════════════════════════════════════════════
    12.5) VIEW SWITCHING  ·  body[data-view] controls visibility

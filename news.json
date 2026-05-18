@@ -1,34 +1,10 @@
 [
   {
-    "title_uk":   "✨ v1.0.5 — Полірування i18n і поради",
-    "title_en":   "✨ v1.0.5 — i18n polish + new tips",
-    "excerpt_uk": "Уточнено формулювання в Settings → General, Saves, Log і About. Поради в картці на головній переписано (включно з порадою про внутрішньоігрові цигарки) і повністю локалізовано. Картка порад збільшена до 270px, щоб довгі тексти повністю вміщувалися.",
-    "excerpt_en": "Refined wording in Settings → General, Saves, Log and About. Hero tip card rewritten (including a tip about the in-game cigarettes) and fully localized. Tip card grown to 270px so longer texts fit without truncation.",
+    "title_uk":   "🚀 v1.0.0 — Офіційний запуск на dplauncher",
+    "title_en":   "🚀 v1.0.0 — Official launch on dplauncher",
+    "excerpt_uk": "DP1 Launcher переїхав під офіційний org dplauncher. Свіжа збірка з усіма фічами: інтерактивна мапа Ґрінвейлу, Skip Intro Videos, повне скидання DXVK, кнопка повного reset, згортання в трей при запуску гри (щоб автобекапи продовжували працювати). Двомовний інтерфейс (UA/EN), повний першорун-візард, авто-оновлення.",
+    "excerpt_en": "DP1 Launcher has moved under the official dplauncher org. A fresh build with everything: interactive Greenvale map, Skip Intro Videos, full DXVK revert, full reset button, minimize-to-tray on game launch (so autosave backups keep running). Bilingual UI (UA/EN), full first-run wizard, in-app auto-updater.",
     "date":       "May 18, 2026",
-    "url":        "https://github.com/LittleBitUA/DP1-Launcher/releases/tag/v1.0.5"
-  },
-  {
-    "title_uk":   "🌍 v1.0.4 — Повна локалізація",
-    "title_en":   "🌍 v1.0.4 — Full localization",
-    "excerpt_uk": "Першорун-візард, Settings (Accessibility / Saves / Log), About і всі модалки тепер повністю двомовні. Перемикач у Settings → General миттєво змінює всі написи. Renderer-toasti та notes теж через t().",
-    "excerpt_en": "First-run wizard, Settings (Accessibility / Saves / Log), About and all modals are now fully bilingual. The toggle in Settings → General flips every label live. Renderer toasts and notes also go through t().",
-    "date":       "May 18, 2026",
-    "url":        "https://github.com/LittleBitUA/DP1-Launcher/releases/tag/v1.0.4"
-  },
-  {
-    "title_uk":   "🚀 v1.0.3 — Авто-оновлення лаунчера",
-    "title_en":   "🚀 v1.0.3 — Auto-update is live",
-    "excerpt_uk": "Кнопка «Оновити» в модалці тепер реально оновлює: качає ZIP з GitHub релізу, розпаковує, замінює файли і перезапускає. Прогрес показано в картці LAUNCHER UPDATE.",
-    "excerpt_en": "The Update button now truly updates: downloads the latest GitHub release ZIP, extracts, swaps files, and restarts. Progress shown in the LAUNCHER UPDATE card.",
-    "date":       "May 18, 2026",
-    "url":        "https://github.com/LittleBitUA/DP1-Launcher/releases/tag/v1.0.3"
-  },
-  {
-    "title_uk":   "🎉 Перший реліз DP1 Launcher v1.0.0",
-    "title_en":   "🎉 First release — DP1 Launcher v1.0.0",
-    "excerpt_uk": "Сучасний фанатський лаунчер для Deadly Premonition: The Director's Cut. Автоматичне встановлення DPFix v0.9.5 (Durante), 4GB LAA Patch (NTCore) і DXVK 2.7.1 (doitsujin).",
-    "excerpt_en": "Modern fan-made launcher for Deadly Premonition: The Director's Cut. Auto-install for DPFix v0.9.5 (Durante), 4GB LAA Patch (NTCore) and DXVK 2.7.1 (doitsujin).",
-    "date":       "May 18, 2026",
-    "url":        "https://github.com/LittleBitUA/DP1-Launcher/releases/tag/v1.0.0"
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v1.0.0"
   }
 ]

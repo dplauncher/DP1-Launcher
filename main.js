@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage } = require('electron');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
@@ -8,7 +8,7 @@ const https = require('https');
 const { Worker } = require('worker_threads');
 
 // GitHub repo used for update checks + news feed
-const UPDATE_REPO = 'LittleBitUA/DP1-Launcher';
+const UPDATE_REPO = 'dplauncher/DP1-Launcher';
 
 // First-launch setup: external resources to download + extract.
 //   archive: 'zip'    → PowerShell Expand-Archive
@@ -118,6 +118,9 @@ async function writeSettings(data) {
 // ─────────────────────────────────────────────
 let mainWindow;
 let splashWindow;
+let tray = null;
+let isQuitting = false;     // true once the user explicitly chose Quit
+let trayLang   = 'uk';      // updated from renderer; controls tray menu labels
 
 // Splash always stays visible for at least this long so the fill
 // animation has time to complete.
@@ -214,6 +217,13 @@ function setupSplashFlow() {
   setTimeout(() => { minTimePassed = true; reveal(); }, SPLASH_MIN_MS);
 }
 
+// Windows: bind the taskbar icon/group to our AUMID so the taskbar shows
+// our DP_LOGO instead of Electron's default — required in dev mode where
+// the .exe icon comes from electron.exe, not our packaged build.
+if (process.platform === 'win32') {
+  try { app.setAppUserModelId('ua.littlebit.dp1-launcher'); } catch {}
+}
+
 app.whenReady().then(() => {
   createSplashWindow();
   createWindow();
@@ -225,6 +235,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (iniWorker)  { iniWorker.terminate();  iniWorker  = null; }
   if (saveWorker) { saveWorker.terminate(); saveWorker = null; }
+  if (tray)       { tray.destroy();         tray       = null; }
   app.quit();
 });
 
@@ -238,7 +249,58 @@ ipcMain.handle('window-maximize',  () => {
   else                          mainWindow.maximize();
 });
 ipcMain.handle('window-close',     () => mainWindow?.close());
-ipcMain.handle('quit-app',         () => app.quit());
+ipcMain.handle('quit-app',         () => { isQuitting = true; app.quit(); });
+
+// ─────────────────────────────────────────────
+// Tray — keep the launcher running while the game is open so the
+// save-worker can keep snapshotting dp.sav every 2 minutes.
+// ─────────────────────────────────────────────
+const TRAY_LABELS = {
+  uk: { show: 'Показати лаунчер', quit: 'Вийти з лаунчера', tip: 'DP1 Launcher — резервне копіювання активне' },
+  en: { show: 'Show launcher',    quit: 'Quit launcher',    tip: 'DP1 Launcher — autosave backup running' },
+};
+
+function buildTrayMenu() {
+  const L = TRAY_LABELS[trayLang] || TRAY_LABELS.en;
+  return Menu.buildFromTemplate([
+    { label: L.show, click: () => showMainWindow() },
+    { type: 'separator' },
+    { label: L.quit, click: () => { isQuitting = true; app.quit(); } },
+  ]);
+}
+
+function showMainWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function ensureTray() {
+  if (tray) return tray;
+  const iconPath = path.join(__dirname, 'assets', 'DP_LOGO.ico');
+  const img      = nativeImage.createFromPath(iconPath);
+  tray = new Tray(img.isEmpty() ? nativeImage.createEmpty() : img);
+  tray.setToolTip((TRAY_LABELS[trayLang] || TRAY_LABELS.en).tip);
+  tray.setContextMenu(buildTrayMenu());
+  tray.on('double-click', () => showMainWindow());
+  tray.on('click',        () => showMainWindow());
+  return tray;
+}
+
+ipcMain.handle('hide-to-tray', (_event, lang) => {
+  if (lang === 'uk' || lang === 'en') {
+    trayLang = lang;
+  }
+  ensureTray();
+  if (tray) {
+    tray.setToolTip((TRAY_LABELS[trayLang] || TRAY_LABELS.en).tip);
+    tray.setContextMenu(buildTrayMenu());
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide();
+  }
+});
 
 // ─────────────────────────────────────────────
 // IPC – INI operations  (delegated to Worker)
@@ -317,6 +379,26 @@ ipcMain.handle('launch-game', async (_event, exePath) => {
 // ─────────────────────────────────────────────
 ipcMain.handle('settings-read',  async () => readSettings());
 ipcMain.handle('settings-write', async (_event, data) => { await writeSettings(data); return true; });
+
+// Full-reset: wipe persisted settings + activity log so the next launch
+// shows the first-run wizard. Used when the user reinstalls the game and
+// wants to re-run setup against the new install folder.
+ipcMain.handle('settings-reset-all', async () => {
+  const tryUnlink = async (p) => {
+    try { await fs.promises.unlink(p); } catch { /* missing is fine */ }
+  };
+  await Promise.all([
+    tryUnlink(getSettingsPath()),
+    tryUnlink(getActivityPath()),
+  ]);
+  return true;
+});
+
+ipcMain.handle('relaunch-app', () => {
+  app.relaunch();
+  isQuitting = true;
+  app.exit(0);
+});
 
 // ─────────────────────────────────────────────
 // IPC – System locale (instant sync getter — no I/O)
@@ -608,6 +690,14 @@ ipcMain.handle('apply-update', async () => {
       mainWindow.webContents.send('update-progress', { type, ...extra });
     }
   };
+  // Refuse to auto-update when running from a dev checkout. process.execPath
+  // points at node_modules/electron/dist/electron.exe in that case, and the
+  // update would robocopy the launcher binary OVER Electron itself, wrecking
+  // the dev environment until you delete the polluted files by hand.
+  if (!app.isPackaged) {
+    send('error', { error: 'Auto-update is disabled in dev mode (running un-packaged Electron).' });
+    return { success: false, error: 'dev-mode' };
+  }
   try {
     send('locating');
     const asset = await findLatestZipAssetUrl();
@@ -623,7 +713,9 @@ ipcMain.handle('apply-update', async () => {
     // Build a batch script that swaps files + restarts the app
     const installDir = path.dirname(process.execPath).replace(/\\/g, '\\');
     const exeName    = path.basename(process.execPath);
-    const batchPath  = path.join(os.tmpdir(), `dp1-update-${Date.now()}.bat`);
+    const stamp     = Date.now();
+    const batchPath = path.join(os.tmpdir(), `dp1-update-${stamp}.bat`);
+    const vbsPath   = path.join(os.tmpdir(), `dp1-update-${stamp}.vbs`);
     const batch =
       '@echo off\r\n' +
       'chcp 65001 >nul\r\n' +
@@ -635,13 +727,21 @@ ipcMain.handle('apply-update', async () => {
       `start "" "${path.join(installDir, exeName).replace(/\\/g, '\\')}"\r\n` +
       `rmdir /s /q "${extractDir.replace(/\\/g, '\\')}" >nul 2>&1\r\n` +
       `del "${tmpZip.replace(/\\/g, '\\')}" >nul 2>&1\r\n` +
+      `del "${vbsPath.replace(/\\/g, '\\')}" >nul 2>&1\r\n` +
       `del "%~f0"\r\n`;
     await fs.promises.writeFile(batchPath, batch, { encoding: 'utf8' });
+
+    // VBS wrapper to launch the batch with a truly hidden window.
+    // Node's windowsHide flag is ignored when detached:true is set (DETACHED_PROCESS
+    // overrides CREATE_NO_WINDOW), so the cmd console flashes onscreen. WScript.Shell.Run
+    // uses ShellExecute under the hood — windowStyle=0 hides the child reliably.
+    const vbs = `CreateObject("WScript.Shell").Run "cmd /c ""${batchPath}""", 0, False\r\n`;
+    await fs.promises.writeFile(vbsPath, vbs, { encoding: 'utf8' });
 
     send('installing');
 
     const { spawn } = require('child_process');
-    spawn('cmd', ['/c', batchPath], {
+    spawn('wscript.exe', [vbsPath], {
       detached: true,
       stdio:    'ignore',
       windowsHide: true,
@@ -1004,6 +1104,76 @@ ipcMain.handle('check-4gb-applied', async (_event, { exePath }) => {
 });
 
 // ─────────────────────────────────────────────
+// IPC – Skip Intro Videos
+//
+// Community-known single-byte hex patch on the game executable:
+//   offset 0x243333  B3 → 00   (skip intro), 00 → B3 (restore).
+// We write a .bak alongside the .exe on first patch, validate the
+// byte we expect to see before touching, and treat any other value
+// as "exe doesn't match — refuse and report".
+// ─────────────────────────────────────────────
+const SKIP_INTRO_OFFSET   = 0x243333;
+const SKIP_INTRO_ORIGINAL = 0xB3;
+const SKIP_INTRO_PATCHED  = 0x00;
+
+async function readSkipIntroByte(exePath) {
+  let fh;
+  try {
+    fh = await fs.promises.open(exePath, 'r');
+    const buf = Buffer.alloc(1);
+    await fh.read(buf, 0, 1, SKIP_INTRO_OFFSET);
+    return buf[0];
+  } finally {
+    try { await fh?.close(); } catch {}
+  }
+}
+
+ipcMain.handle('check-skip-intro', async (_event, { exePath }) => {
+  if (!exePath) return { supported: false, applied: false };
+  try {
+    const byte = await readSkipIntroByte(exePath);
+    if (byte === SKIP_INTRO_PATCHED)  return { supported: true, applied: true };
+    if (byte === SKIP_INTRO_ORIGINAL) return { supported: true, applied: false };
+    return { supported: false, applied: false, byte };
+  } catch (err) {
+    return { supported: false, applied: false, error: err.message };
+  }
+});
+
+ipcMain.handle('apply-skip-intro', async (_event, { exePath, enable }) => {
+  if (!exePath) return { success: false, error: 'No exe path' };
+  let fh;
+  try {
+    // Make a .bak the first time we touch the file.
+    const bakPath = exePath + '.bak';
+    try { await fs.promises.access(bakPath); }
+    catch { await fs.promises.copyFile(exePath, bakPath); }
+
+    const current  = await readSkipIntroByte(exePath);
+    const expected = enable ? SKIP_INTRO_ORIGINAL : SKIP_INTRO_PATCHED;
+    const target   = enable ? SKIP_INTRO_PATCHED  : SKIP_INTRO_ORIGINAL;
+
+    if (current === target) {
+      return { success: true, alreadyApplied: true };
+    }
+    if (current !== expected) {
+      return {
+        success: false,
+        error: `Unexpected byte 0x${current.toString(16).padStart(2, '0').toUpperCase()} at 0x${SKIP_INTRO_OFFSET.toString(16)}. Expected 0x${expected.toString(16).padStart(2,'0').toUpperCase()}. This .exe doesn't match the known DP:DC build.`,
+      };
+    }
+
+    fh = await fs.promises.open(exePath, 'r+');
+    await fh.write(Buffer.from([target]), 0, 1, SKIP_INTRO_OFFSET);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  } finally {
+    try { await fh?.close(); } catch {}
+  }
+});
+
+// ─────────────────────────────────────────────
 // IPC – Toggle Steam Overlay for a specific Steam app
 //
 // Edits <SteamPath>/userdata/<UserID>/config/localconfig.vdf, locating the
@@ -1115,17 +1285,6 @@ ipcMain.handle('set-steam-overlay', async (_event, { appId, enabled }) => {
   };
 });
 
-ipcMain.handle('check-dxvk-applied', async (_event, { gameDir }) => {
-  if (!gameDir) return { applied: false };
-  try { await fs.promises.access(DXVK_SYS_TARGET); }
-  catch { return { applied: false, reason: 'SysWOW64\\d9vk.dll missing' }; }
-  try {
-    const buf = await fs.promises.readFile(path.join(gameDir, 'd3d9.dll'));
-    const hex = buf.indexOf(Buffer.from('d9vk.dll', 'ascii')) !== -1;
-    return { applied: hex, reason: hex ? null : 'game d3d9.dll not yet patched' };
-  } catch { return { applied: false, reason: 'game d3d9.dll missing' }; }
-});
-
 async function findDxvkSourceDll(gameDir) {
   const cacheDir = path.join(gameDir, '_dxvk-cache');
   try {
@@ -1189,6 +1348,94 @@ ipcMain.handle('apply-dxvk-auto', async (_event, { gameDir }) => {
 
   await fs.promises.writeFile(gameDll, buf);
   return { success: true, replacements: count };
+});
+
+// ─────────────────────────────────────────────
+// IPC – Revert DXVK (full undo of apply-dxvk-auto, plus deletes the DLLs).
+//
+// Reverses every step of the apply flow, in opposite order:
+//   1) Restore <gameDir>/d3d9.dll  (prefer the .bak we wrote during apply;
+//      fall back to a hex-replace 'd9vk.dll' → 'd3d9.dll' in place).
+//   2) Delete <gameDir>/d3d9.dll.bak  (cleanup once restore is confirmed).
+//   3) Delete C:\Windows\SysWOW64\d9vk.dll  (admin required).
+// ─────────────────────────────────────────────
+ipcMain.handle('revert-dxvk-auto', async (_event, { gameDir }) => {
+  if (!gameDir) return { success: false, error: 'No game folder' };
+  const gameDll = path.join(gameDir, 'd3d9.dll');
+  const bakPath = gameDll + '.bak';
+  const steps   = [];
+
+  // 1) Restore game's d3d9.dll
+  try {
+    await fs.promises.access(bakPath);
+    await fs.promises.copyFile(bakPath, gameDll);
+    steps.push('Restored game d3d9.dll from .bak');
+  } catch {
+    // No .bak — try in-place hex-reverse 'd9vk.dll' → 'd3d9.dll'
+    try {
+      const buf = await fs.promises.readFile(gameDll);
+      const search  = Buffer.from('d9vk.dll', 'ascii');
+      const replace = Buffer.from('d3d9.dll', 'ascii');
+      let pos = 0, count = 0;
+      while ((pos = buf.indexOf(search, pos)) !== -1) {
+        replace.copy(buf, pos);
+        pos += replace.length;
+        count++;
+      }
+      if (count === 0) {
+        // Game d3d9.dll already references d3d9.dll — nothing to revert
+        steps.push('Game d3d9.dll already unpatched');
+      } else {
+        await fs.promises.writeFile(gameDll, buf);
+        steps.push(`Hex-reverted d3d9.dll in place (${count} refs)`);
+      }
+    } catch (err) {
+      return { success: false, error: `Cannot restore game d3d9.dll: ${err.message}`, steps };
+    }
+  }
+
+  // 2) Cleanup the .bak (best-effort)
+  try {
+    await fs.promises.unlink(bakPath);
+    steps.push('Removed d3d9.dll.bak');
+  } catch { /* missing is fine */ }
+
+  // 3) Delete SysWOW64\d9vk.dll
+  try {
+    await fs.promises.unlink(DXVK_SYS_TARGET);
+    steps.push('Removed SysWOW64\\d9vk.dll');
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      steps.push('SysWOW64\\d9vk.dll already absent');
+    } else if (err.code === 'EPERM' || err.code === 'EACCES') {
+      return {
+        success: false,
+        error: 'Adminstrator rights required to remove SysWOW64\\d9vk.dll',
+        steps,
+      };
+    } else {
+      return { success: false, error: err.message, steps };
+    }
+  }
+
+  return { success: true, steps };
+});
+
+// Detection helper for the DXVK revert button: was DXVK applied via this
+// launcher? (Either the system DLL exists, the game's d3d9.dll has been
+// hex-patched, or both. .bak presence is also a strong signal.)
+ipcMain.handle('check-dxvk-applied', async (_event, { gameDir }) => {
+  const result = { systemDll: false, gamePatched: false, bakExists: false };
+  if (!gameDir) return { ...result, applied: false };
+  try { await fs.promises.access(DXVK_SYS_TARGET); result.systemDll = true; } catch {}
+  const gameDll = path.join(gameDir, 'd3d9.dll');
+  try {
+    const buf = await fs.promises.readFile(gameDll);
+    result.gamePatched = buf.indexOf(Buffer.from('d9vk.dll', 'ascii')) !== -1;
+  } catch {}
+  try { await fs.promises.access(gameDll + '.bak'); result.bakExists = true; } catch {}
+  result.applied = result.systemDll || result.gamePatched || result.bakExists;
+  return result;
 });
 
 // ─────────────────────────────────────────────

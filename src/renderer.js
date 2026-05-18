@@ -170,9 +170,9 @@ async function launchGame() {
   try {
     const res = await window.electronAPI.launchSteam(STEAM_APPID);
     if (res?.success) {
-      showToast(t('toast.gameLaunched'), 'success');
-      logActivity('episode', 'Game launched via Steam');
-      setTimeout(() => window.electronAPI.quitApp(), 1500);
+      showToast(t('toast.gameLaunchedTray'), 'success');
+      logActivity('episode', 'Game launched via Steam — launcher hidden to tray');
+      setTimeout(() => window.electronAPI.hideToTray(getCurrentLang()), 1500);
     } else {
       showToast(t('toast.launchError') + (res?.error || ''), 'error');
     }
@@ -312,8 +312,88 @@ function activateSettingsSection(name) {
   $$('.settings-section').forEach(s => s.classList.toggle('active',  s.dataset.section === name));
 
   // Refresh dynamic state when navigating into a section that needs it
-  if (name === 'accessibility') refreshCompatStatus();
+  if (name === 'accessibility') { refreshCompatStatus(); refreshSkipIntroStatus(); }
+  if (name === 'graphics')      refreshDxvkRevertStatus();
   if (name === 'log')           renderActivity();
+}
+
+function getGameDir() {
+  if (!state.gamePath) return null;
+  return state.gamePath.replace(/[^\\\/]*$/, '').replace(/[\\\/]$/, '');
+}
+
+async function refreshDxvkRevertStatus() {
+  const statusEl = $('dxvk-revert-status');
+  const btn      = $('btn-dxvk-revert');
+  const note     = $('dxvk-revert-note');
+  if (!btn) return;
+
+  const gameDir = getGameDir();
+  if (!gameDir) {
+    btn.disabled = true;
+    if (statusEl) { statusEl.textContent = t('dxvkRevert.notApplied'); statusEl.className = 'compat-status'; }
+    if (note)     { note.textContent = t('dxvkRevert.noGame'); note.className = 'compat-note'; }
+    return;
+  }
+
+  try {
+    const r = await window.electronAPI.checkDxvkApplied?.(gameDir);
+    if (r?.applied) {
+      if (statusEl) { statusEl.textContent = t('dxvkRevert.applied'); statusEl.className = 'compat-status ok'; }
+      btn.disabled = false;
+      if (note) { note.textContent = ''; note.className = 'compat-note'; }
+    } else {
+      if (statusEl) { statusEl.textContent = t('dxvkRevert.notApplied'); statusEl.className = 'compat-status'; }
+      btn.disabled = true;
+      if (note) { note.textContent = ''; note.className = 'compat-note'; }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onDxvkRevertClick() {
+  const gameDir = getGameDir();
+  if (!gameDir) { showToast(t('dxvkRevert.noGame'), 'warn'); return; }
+
+  const ok = await openConfirm({
+    title:      t('dxvkRevert.confirmTitle'),
+    body:       t('dxvkRevert.confirmBody'),
+    okText:     t('dxvkRevert.confirmOk'),
+    cancelText: t('dxvkRevert.confirmCancel'),
+  });
+  if (!ok) return;
+
+  const btn  = $('btn-dxvk-revert');
+  const note = $('dxvk-revert-note');
+  if (btn)  btn.disabled = true;
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+
+  try {
+    const r = await window.electronAPI.revertDxvkAuto?.(gameDir);
+    if (r?.success) {
+      showToast(t('toast.dxvkReverted'), 'success');
+      logActivity('completed', 'DXVK reverted — game d3d9.dll restored, SysWOW64\\d9vk.dll removed');
+      if (note) {
+        note.textContent = (r.steps || []).join(' · ');
+        note.className = 'compat-note ok';
+      }
+      refreshDxvkRevertStatus();
+    } else {
+      const errMsg = r?.error || 'failed';
+      const needsAdmin = /admin/i.test(errMsg);
+      showToast(t('toast.dxvkRevertErr') + errMsg, 'error');
+      if (note) {
+        note.textContent = needsAdmin ? t('dxvkRevert.needAdmin') : errMsg;
+        note.className = 'compat-note error';
+      }
+      if (btn) btn.disabled = false;
+    }
+  } catch (err) {
+    showToast(t('toast.dxvkRevertErr') + err.message, 'error');
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+    if (btn)  btn.disabled = false;
+  }
 }
 
 // Wire "Очистити журнал" button
@@ -325,6 +405,27 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('Журнал очищено ✓', 'success');
     } catch (err) {
       showToast('Помилка очистки: ' + err.message, 'error');
+    }
+  });
+
+  // Settings → Graphics → Fully revert DXVK
+  $('btn-dxvk-revert')?.addEventListener('click', onDxvkRevertClick);
+
+  // Settings → About → Reset everything
+  $('btn-reset-all')?.addEventListener('click', async () => {
+    const ok = await openConfirm({
+      title:    t('reset.confirmTitle'),
+      body:     t('reset.confirmBody'),
+      okText:   t('reset.confirmOk'),
+      cancelText: t('reset.confirmCancel'),
+    });
+    if (!ok) return;
+    try {
+      await window.electronAPI.settingsResetAll?.();
+      showToast(t('toast.resetDone'), 'success');
+      setTimeout(() => window.electronAPI.relaunchApp?.(), 800);
+    } catch (err) {
+      showToast('Reset failed: ' + err.message, 'error');
     }
   });
 });
@@ -568,6 +669,88 @@ async function setupCompatBlock() {
 
   $('btn-compat-toggle')?.addEventListener('click', () => toggleCompat('xpsp3'));
   $('btn-compat-win98')?.addEventListener('click',  () => toggleCompat('win98'));
+
+  $('skip-intro-toggle')?.addEventListener('change', onSkipIntroToggle);
+}
+
+async function refreshSkipIntroStatus() {
+  const toggle = $('skip-intro-toggle');
+  const label  = $('skip-intro-label');
+  const note   = $('skip-intro-note');
+  if (!toggle) return;
+
+  if (!state.gamePath) {
+    toggle.checked  = false;
+    toggle.disabled = true;
+    if (label) label.textContent = t('saves.off');
+    if (note)  { note.textContent = t('skipIntro.noExe'); note.className = 'compat-note'; }
+    return;
+  }
+
+  toggle.disabled = false;
+  try {
+    const r = await window.electronAPI.checkSkipIntro?.(state.gamePath);
+    if (r?.supported) {
+      toggle.checked = !!r.applied;
+      if (label) label.textContent = r.applied ? t('saves.on') : t('saves.off');
+      if (note)  { note.textContent = ''; note.className = 'compat-note'; }
+    } else {
+      toggle.checked  = false;
+      toggle.disabled = true;
+      if (label) label.textContent = t('saves.off');
+      const byte = r && typeof r.byte === 'number'
+        ? ` (byte 0x${r.byte.toString(16).padStart(2,'0').toUpperCase()})` : '';
+      if (note)  { note.textContent = "Unsupported .exe build" + byte; note.className = 'compat-note error'; }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onSkipIntroToggle(e) {
+  const toggle = e.target;
+  const enable = toggle.checked;
+  // Always revert UI to "previous" state until user confirms — prevents flicker
+  // showing the new state before the patch actually lands.
+  toggle.checked = !enable;
+
+  if (!state.gamePath) {
+    showToast(t('skipIntro.noExe'), 'warn');
+    return;
+  }
+
+  const ok = await openConfirm({
+    title:      t('skipIntro.confirmTitle'),
+    body:       enable ? t('skipIntro.confirmBody') : t('skipIntro.revertBody'),
+    okText:     enable ? t('skipIntro.confirmOk')   : t('skipIntro.revertOk'),
+    cancelText: t('skipIntro.confirmCancel'),
+  });
+  if (!ok) return;
+
+  const note  = $('skip-intro-note');
+  const label = $('skip-intro-label');
+  toggle.disabled = true;
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+
+  try {
+    const r = await window.electronAPI.applySkipIntro?.(state.gamePath, enable);
+    if (r?.success) {
+      toggle.checked  = enable;
+      if (label) label.textContent = enable ? t('saves.on') : t('saves.off');
+      if (note)  { note.textContent = ''; note.className = 'compat-note'; }
+      showToast(enable ? t('toast.skipIntroOn') : t('toast.skipIntroOff'), 'success');
+      logActivity(enable ? 'completed' : 'info',
+                  enable ? 'Skip Intro patched (0x243333: B3→00)' : 'Skip Intro reverted (0x243333: 00→B3)');
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+      showToast(t('toast.skipIntroErr') + (r?.error || ''), 'error');
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+    showToast(t('toast.skipIntroErr') + err.message, 'error');
+  } finally {
+    toggle.disabled = false;
+  }
 }
 
 function updateAdminBanner() {
@@ -1148,6 +1331,41 @@ function showToast(msg, type = 'info', dur = 3000) {
   el.addEventListener('click', () => { clearTimeout(tid); remove(); });
 }
 
+// Show the generic confirm modal. Returns a Promise<boolean>.
+function openConfirm({ title, body, okText, cancelText, danger = true } = {}) {
+  return new Promise((resolve) => {
+    const overlay = $('confirm-overlay');
+    const titleEl = $('confirm-title');
+    const textEl  = $('confirm-text');
+    const okBtn   = $('btn-confirm-ok');
+    const noBtn   = $('btn-confirm-cancel');
+    if (!overlay || !okBtn || !noBtn) { resolve(false); return; }
+
+    if (title && titleEl) titleEl.textContent = title;
+    if (textEl)           textEl.textContent  = body || '';
+    if (okText)           okBtn.textContent   = okText;
+    if (cancelText)       noBtn.textContent   = cancelText;
+    okBtn.classList.toggle('btn-danger', !!danger);
+
+    const cleanup = (val) => {
+      overlay.classList.add('hidden');
+      okBtn.removeEventListener('click', onOk);
+      noBtn.removeEventListener('click', onNo);
+      overlay.removeEventListener('click', onBackdrop);
+      resolve(val);
+    };
+    const onOk = () => cleanup(true);
+    const onNo = () => cleanup(false);
+    const onBackdrop = (e) => { if (e.target === overlay) cleanup(false); };
+
+    okBtn.addEventListener('click', onOk);
+    noBtn.addEventListener('click', onNo);
+    overlay.addEventListener('click', onBackdrop);
+
+    overlay.classList.remove('hidden');
+  });
+}
+
 function setToggle(id, on) { const el = $(id); if (el) el.checked = !!on; }
 function setRadio(name, val) { const el = document.querySelector(`input[name="${name}"][value="${val}"]`); if (el) el.checked = true; }
 function getRadio(name)      { return document.querySelector(`input[name="${name}"]:checked`)?.value ?? ''; }
@@ -1250,9 +1468,180 @@ function setupTopNavViews() {
 
 function switchView(view) {
   $$('.topnav-link').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  if (view === 'home' || view === 'settings') {
+  if (view === 'home' || view === 'settings' || view === 'map') {
     document.body.dataset.view = view;
   }
+  if (view === 'map') setupMapView();
+}
+
+// ═════════════════════════════════════════════
+// 14.5) Interactive Greenvale Map — pan + zoom + spoiler toggle
+// ═════════════════════════════════════════════
+const MAP_URLS = {
+  clean:    'https://shshatteredmemories.com/greenvale/images/map/map_forweb_NO_SPOILERS.jpg',
+  spoilers: 'https://shshatteredmemories.com/greenvale/images/map/map_forweb_SPOILERS.jpg',
+};
+
+const mapState = {
+  initialised: false,
+  scale: 1,
+  tx:    0,
+  ty:    0,
+  minScale: 0.1,
+  maxScale: 6,
+  panning: false,
+  panStartX: 0,
+  panStartY: 0,
+  txStart:   0,
+  tyStart:   0,
+  showSpoilers: false,
+};
+
+function setupMapView() {
+  if (mapState.initialised) {
+    // Re-fit on subsequent visits if the user resized the window.
+    fitMapToStage();
+    return;
+  }
+  mapState.initialised = true;
+
+  const toggle = $('map-spoilers-toggle');
+  if (toggle) {
+    mapState.showSpoilers = !!toggle.checked;
+    toggle.addEventListener('change', () => {
+      mapState.showSpoilers = toggle.checked;
+      loadMapImage();
+    });
+  }
+
+  $('map-zoom-in') ?.addEventListener('click', () => zoomMap( 1.25));
+  $('map-zoom-out')?.addEventListener('click', () => zoomMap(1 / 1.25));
+  $('map-reset')   ?.addEventListener('click', fitMapToStage);
+
+  const stage = $('map-stage');
+  if (stage) {
+    stage.addEventListener('mousedown', onMapMouseDown);
+    stage.addEventListener('wheel',     onMapWheel, { passive: false });
+  }
+  window.addEventListener('mousemove', onMapMouseMove);
+  window.addEventListener('mouseup',   onMapMouseUp);
+  window.addEventListener('keydown', (e) => {
+    if (document.body.dataset.view !== 'map') return;
+    if (e.key === 'r' || e.key === 'R') fitMapToStage();
+  });
+
+  // Open the credit link in the user's default browser, not inside the app.
+  $('map-credit-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.electronAPI.openExternal?.(e.currentTarget.href);
+  });
+
+  loadMapImage();
+}
+
+function loadMapImage() {
+  const img    = $('map-img');
+  const loader = $('map-loader');
+  if (!img) return;
+
+  if (loader) {
+    loader.classList.remove('hidden', 'error');
+    loader.textContent = t('map.loading');
+  }
+  img.style.visibility = 'hidden';
+
+  const onLoad = () => {
+    img.removeEventListener('load',  onLoad);
+    img.removeEventListener('error', onErr);
+    img.style.visibility = 'visible';
+    if (loader) loader.classList.add('hidden');
+    fitMapToStage();
+  };
+  const onErr = () => {
+    img.removeEventListener('load',  onLoad);
+    img.removeEventListener('error', onErr);
+    if (loader) { loader.classList.add('error'); loader.textContent = t('map.error'); }
+  };
+  img.addEventListener('load',  onLoad);
+  img.addEventListener('error', onErr);
+  img.src = mapState.showSpoilers ? MAP_URLS.spoilers : MAP_URLS.clean;
+}
+
+function applyMapTransform() {
+  const canvas = $('map-canvas');
+  if (canvas) {
+    canvas.style.transform = `translate(${mapState.tx}px, ${mapState.ty}px) scale(${mapState.scale})`;
+  }
+}
+
+function fitMapToStage() {
+  const stage = $('map-stage');
+  const img   = $('map-img');
+  if (!stage || !img || !img.naturalWidth) return;
+  const sw = stage.clientWidth;
+  const sh = stage.clientHeight;
+  const scale = Math.min(sw / img.naturalWidth, sh / img.naturalHeight);
+  mapState.scale = scale;
+  mapState.tx = (sw - img.naturalWidth  * scale) / 2;
+  mapState.ty = (sh - img.naturalHeight * scale) / 2;
+  applyMapTransform();
+}
+
+function zoomMap(factor, centerX, centerY) {
+  const stage = $('map-stage');
+  if (!stage) return;
+  const newScale = Math.min(mapState.maxScale, Math.max(mapState.minScale, mapState.scale * factor));
+  if (newScale === mapState.scale) return;
+
+  // Zoom around (centerX, centerY) in stage coords. Default to stage centre.
+  const cx = centerX ?? stage.clientWidth  / 2;
+  const cy = centerY ?? stage.clientHeight / 2;
+
+  // World point under cursor before zoom
+  const wx = (cx - mapState.tx) / mapState.scale;
+  const wy = (cy - mapState.ty) / mapState.scale;
+
+  mapState.scale = newScale;
+  mapState.tx = cx - wx * newScale;
+  mapState.ty = cy - wy * newScale;
+  applyMapTransform();
+}
+
+function onMapMouseDown(e) {
+  if (e.button !== 0) return;
+  const stage = $('map-stage');
+  if (!stage) return;
+  mapState.panning = true;
+  stage.classList.add('is-panning');
+  mapState.panStartX = e.clientX;
+  mapState.panStartY = e.clientY;
+  mapState.txStart   = mapState.tx;
+  mapState.tyStart   = mapState.ty;
+  e.preventDefault();
+}
+
+function onMapMouseMove(e) {
+  if (!mapState.panning) return;
+  mapState.tx = mapState.txStart + (e.clientX - mapState.panStartX);
+  mapState.ty = mapState.tyStart + (e.clientY - mapState.panStartY);
+  applyMapTransform();
+}
+
+function onMapMouseUp() {
+  if (!mapState.panning) return;
+  mapState.panning = false;
+  $('map-stage')?.classList.remove('is-panning');
+}
+
+function onMapWheel(e) {
+  e.preventDefault();
+  const stage = $('map-stage');
+  if (!stage) return;
+  const rect = stage.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  zoomMap(factor, cx, cy);
 }
 
 // ═════════════════════════════════════════════

@@ -8,7 +8,7 @@
 <br>
 _Сучасний фанатський лаунчер для_ **Deadly Premonition: The Director's Cut**
 
-[![GitHub release](https://img.shields.io/github/v/release/LittleBitUA/DP1-Launcher?style=for-the-badge&color=c4192b)](https://github.com/LittleBitUA/DP1-Launcher/releases)
+[![GitHub release](https://img.shields.io/github/v/release/dplauncher/DP1-Launcher?style=for-the-badge&color=c4192b)](https://github.com/dplauncher/DP1-Launcher/releases)
 [![License](https://img.shields.io/badge/license-MIT-c4192b?style=for-the-badge)](LICENSE)
 [![Made by Little Bit](https://img.shields.io/badge/by-%C2%ABLittle%20Bit%C2%BB-c4192b?style=for-the-badge)](https://t.me/LittleBitUA)
 
@@ -44,7 +44,7 @@ The launcher downloads, installs and configures everything for you.
 
 ### Installation
 
-1. Download the latest version from [Releases](https://github.com/LittleBitUA/DP1-Launcher/releases)
+1. Download the latest version from [Releases](https://github.com/dplauncher/DP1-Launcher/releases)
 2. Extract the archive anywhere
 3. Run `DP1 Launcher.exe`
 4. The launcher autodetects the game in your Steam libraries and offers to install the patches
@@ -92,7 +92,7 @@ Windows-built-in `tar.exe` for `.tar.gz` extraction, PowerShell for registry ops
 
 ### Встановлення
 
-1. Завантажте останню версію з [Releases](https://github.com/LittleBitUA/DP1-Launcher/releases)
+1. Завантажте останню версію з [Releases](https://github.com/dplauncher/DP1-Launcher/releases)
 2. Розпакуйте архів у будь-яку папку
 3. Запустіть `DP1 Launcher.exe`
 4. Лаунчер сам знайде гру у Steam і запропонує встановити компоненти

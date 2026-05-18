@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://shshatteredmemories.com;">
   <title>Deadly Premonition — Fan Launcher</title>
   <link rel="icon" type="image/x-icon" href="../assets/DP_LOGO.ico">
   <link rel="stylesheet" href="styles.css">
@@ -30,12 +30,7 @@
 
       <div class="topnav-left">
         <div class="topnav-logo" title="«Little Bit»">
-          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor"
-               stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M16 4 L11 12 L13.2 12 L9 18 L11.5 18 L7 24 L25 24 L20.5 18 L23 18 L18.8 12 L21 12 Z"/>
-            <rect x="14.7" y="24" width="2.6" height="3.5" fill="currentColor" stroke="none"/>
-            <path d="M16 4 L14 9 M16 4 L18 9 M16 14 L13.5 17 M16 14 L18.5 17" opacity=".55"/>
-          </svg>
+          <img src="../assets/DP_LOGO.png" alt="DP1 Launcher" draggable="false">
         </div>
 
         <nav class="topnav-menu">
@@ -44,6 +39,9 @@
           </button>
           <button class="topnav-link" data-view="settings">
             <span data-i18n="nav.settings">SETTINGS</span><span class="topnav-underline"></span>
+          </button>
+          <button class="topnav-link" data-view="map">
+            <span data-i18n="nav.map">INTERACTIVE MAP</span><span class="topnav-underline"></span>
           </button>
         </nav>
       </div>
@@ -172,6 +170,43 @@
     </section>
 
 
+    <!-- ─────────── Interactive Greenvale Map ─────────── -->
+    <section class="map-view" id="map-view">
+      <header class="map-head">
+        <div class="map-head-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 3 3 5v16l6-2 6 2 6-2V3l-6 2-6-2z"/>
+            <path d="M9 3v16"/>
+            <path d="M15 5v16"/>
+          </svg>
+          <span data-i18n="map.title">INTERACTIVE GREENVALE MAP</span>
+        </div>
+        <div class="map-head-controls">
+          <label class="form-toggle map-spoilers-toggle">
+            <input type="checkbox" id="map-spoilers-toggle">
+            <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+            <span class="form-toggle-label" data-i18n="map.spoilers">Show spoilers</span>
+          </label>
+          <button class="map-btn" id="map-zoom-in"  title="Zoom in"  aria-label="Zoom in">+</button>
+          <button class="map-btn" id="map-zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+          <button class="map-btn" id="map-reset"    data-i18n="map.reset">Reset</button>
+        </div>
+      </header>
+      <p class="map-help" data-i18n-html="map.help">
+        Click and drag to pan. Scroll to zoom. Press <kbd>R</kbd> to reset view.
+      </p>
+      <div class="map-stage" id="map-stage">
+        <div class="map-loader" id="map-loader" data-i18n="map.loading">Loading map…</div>
+        <div class="map-canvas" id="map-canvas">
+          <img id="map-img" alt="Greenvale map" draggable="false">
+        </div>
+      </div>
+      <p class="map-credit">
+        Map by <a href="https://shshatteredmemories.com/" target="_blank" rel="noopener" id="map-credit-link">shshatteredmemories.com</a>
+      </p>
+    </section>
+
     <!-- ─────────── SettingsPanel (right column, open) ─────────── -->
     <aside class="settings-panel" id="settings-panel">
       <header class="settings-head">
@@ -262,6 +297,34 @@
               <span class="form-check-box"></span>
               <span data-i18n="settings.runAsAdmin">Run as Administrator</span>
             </label>
+
+            <h4 class="form-subhead" data-i18n="dxvkRevert.title">DXVK</h4>
+            <p class="settings-help" data-i18n-html="dxvkRevert.help">
+              Якщо DXVK спричиняє проблеми, скиньте його повністю: лаунчер відновить оригінальний
+              <code>d3d9.dll</code> у папці гри з <code>.bak</code> і видалить
+              <code>C:\Windows\SysWOW64\d9vk.dll</code>. Потрібні права адміністратора для видалення системного DLL.
+            </p>
+            <div class="form-row">
+              <span class="form-label" data-i18n="dxvkRevert.status">DXVK status</span>
+              <span class="compat-status" id="dxvk-revert-status">—</span>
+            </div>
+            <div class="compat-actions">
+              <button class="btn-secondary btn-danger" id="btn-dxvk-revert" disabled data-i18n="dxvkRevert.btn">
+                Скинути DXVK повністю
+              </button>
+            </div>
+            <p class="compat-note" id="dxvk-revert-note"></p>
+
+            <div class="about-reset">
+              <h4 class="form-subhead" data-i18n="reset.title">Скинути все</h4>
+              <p class="settings-help" data-i18n="reset.help">
+                Видаляє збережені налаштування і журнал подій. Лаунчер перезапуститься
+                й покаже першозапуск. Файли гри й резервні копії сейвів не чіпаємо.
+              </p>
+              <button class="btn-secondary btn-danger" id="btn-reset-all" data-i18n="reset.btn">
+                Скинути все та перезапустити
+              </button>
+            </div>
           </section>
 
           <!-- GRAPHICS -->
@@ -439,6 +502,22 @@
             </div>
             <p class="compat-note" id="compat-note"></p>
 
+            <h4 class="form-subhead" data-i18n="skipIntro.title">Skip Intro Videos</h4>
+            <p class="settings-help" data-i18n="skipIntro.help">
+              Патчить DeadlyPremonition.exe на одному байті (0x243333),
+              щоб гра пропускала стартові заставки. Створюємо .bak перед записом —
+              можна відключити будь-коли.
+            </p>
+            <div class="form-row">
+              <span class="form-label" data-i18n="skipIntro.label">Skip intro videos</span>
+              <label class="form-toggle">
+                <input type="checkbox" id="skip-intro-toggle">
+                <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                <span class="form-toggle-label" id="skip-intro-label" data-i18n="saves.off">Off</span>
+              </label>
+            </div>
+            <p class="compat-note" id="skip-intro-note"></p>
+
           </section>
 
           <!-- SAVES (formerly Advanced) -->
@@ -554,6 +633,7 @@
                 Deadly Premonition: The Director's Cut належать відповідним правовласникам.
                 Це безкоштовний фанатський проєкт, створений з відкритим серцем.
               </p>
+
 
             </div>
           </section>

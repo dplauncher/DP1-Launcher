@@ -28,14 +28,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSetupProgress:  (cb)                => ipcRenderer.on('setup-progress', (_e, msg) => cb(msg)),
   apply4gbAuto:     (gameDir, targetExe)=> ipcRenderer.invoke('apply-4gb-auto',  { gameDir, targetExe }),
   applyDxvkAuto:    (gameDir)           => ipcRenderer.invoke('apply-dxvk-auto', { gameDir }),
+  revertDxvkAuto:   (gameDir)           => ipcRenderer.invoke('revert-dxvk-auto', { gameDir }),
+  checkDxvkApplied: (gameDir)           => ipcRenderer.invoke('check-dxvk-applied', { gameDir }),
+  checkSkipIntro:   (exePath)           => ipcRenderer.invoke('check-skip-intro', { exePath }),
+  applySkipIntro:   (exePath, enable)   => ipcRenderer.invoke('apply-skip-intro', { exePath, enable }),
   setSteamOverlay:  (appId, enabled)    => ipcRenderer.invoke('set-steam-overlay', { appId, enabled }),
 
   // ── Persistent settings ───────────────────────
   settingsRead:     ()                  => ipcRenderer.invoke('settings-read'),
   settingsWrite:    (data)              => ipcRenderer.invoke('settings-write', data),
+  settingsResetAll: ()                  => ipcRenderer.invoke('settings-reset-all'),
+  relaunchApp:     ()                  => ipcRenderer.invoke('relaunch-app'),
 
   // ── Misc ─────────────────────────────────────
   quitApp:          ()                  => ipcRenderer.invoke('quit-app'),
+  hideToTray:       (lang)              => ipcRenderer.invoke('hide-to-tray', lang),
   openExternal:     (url)               => ipcRenderer.invoke('open-external', url),
   getLocale:        ()                  => ipcRenderer.invoke('get-locale'),
   getTranslations:  ()                  => ipcRenderer.invoke('get-translations'),
