@@ -147,6 +147,59 @@ A binary patch that adds overflow handling would need to:
 This is a multi-week effort for one person. The 3-hour-restart reminder
 delivers ~90% of the user-visible benefit with zero risk to the binary.
 
+## Patch attempt (v1.2.0/v1.2.1) — and why it was reverted
+
+In v1.2.0 we shipped an experimental 10-byte 2-site hex patch that
+attempted to add a null-check around the deref:
+
+```
+File 0x302E12 (FUN_007039f0 + 0x22):
+  8B 00          → EB 31          ; redirect to safety cave
+File 0x302E45 (CC padding cave):
+  CC CC CC ...   → 85 C0 74 02 8B 00 EB C7
+                 ; TEST EAX, EAX / JZ +2 / MOV EAX, [EAX] / JMP back
+```
+
+The intent: when Pop returns null, skip the deref, leave EAX=0,
+return slot 0 to the caller (graceful reuse instead of CTD).
+
+**Field testing revealed a flaw:** on save-load paths, `TPopList::Pop`
+does not return a clean `NULL` when the stack is empty — it returns a
+**garbage non-null pointer** (likely a stale stack address from previous
+frame). Our `TEST EAX, EAX` did not catch this, so the patched code
+still dereferenced a wild pointer → infinite loading screen on
+completed-game saves (Chapter 6+ community saves, end-game replays).
+
+We reverted the patch in v1.2.2 and disabled the toggle.
+
+## Real fix candidate — v1.3.0 plan (not implemented yet)
+
+The correct fix checks `pool->count >= 64` **before** the lock+Pop
+sequence:
+
+```asm
+At FUN_007039f0 entry:
+  CMP [ECX+4], 0x40       ; 4 bytes: count vs 64
+  JGE return_full          ; 2 bytes
+  (original prologue ...)
+return_full:
+  OR  EAX, 0xFFFFFFFF      ; 3 bytes: return -1
+  RET                       ; 1 byte
+```
+
+Plus a 2-byte guard in the caller `FUN_007019b0`:
+```asm
+After CALL FUN_007039f0:
+  TEST EAX, EAX
+  JS  skip_enqueue          ; if EAX < 0, skip
+  (continue with normal flow)
+```
+
+This requires ~16 bytes of new code, which exceeds the 11-byte CC
+padding cave after FUN_007039f0. Either we find another cave in
+`.text`, or we move some original instructions out to make room.
+Future RE session.
+
 ## Credits & references
 
 - Steam community forum reports (Chapter 8/9 crash pattern, "smoking

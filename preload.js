@@ -44,8 +44,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopCursorHide:   ()                  => ipcRenderer.invoke('stop-cursor-hide'),
   checkCaptureCursor:(gameDir)          => ipcRenderer.invoke('check-capture-cursor', { gameDir }),
   applyCaptureCursor:(gameDir, enable)  => ipcRenderer.invoke('apply-capture-cursor', { gameDir, enable }),
-  checkAudioPoolFix: (exePath)          => ipcRenderer.invoke('check-audio-pool-fix', { exePath }),
-  applyAudioPoolFix: (exePath, enable)  => ipcRenderer.invoke('apply-audio-pool-fix', { exePath, enable }),
+  onSessionWarning:  (cb)               => ipcRenderer.on('session-warning', (_e, data) => cb(data)),
   setSteamOverlay:  (appId, enabled)    => ipcRenderer.invoke('set-steam-overlay', { appId, enabled }),
 
   // ── Persistent settings ───────────────────────

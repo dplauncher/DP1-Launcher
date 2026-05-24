@@ -1,5 +1,13 @@
 [
   {
+    "title_uk":   "🛠 v1.2.2 — Hotfix: прибрано broken audio-pool patch, додано session-timer reminder",
+    "title_en":   "🛠 v1.2.2 — Hotfix: broken audio-pool patch removed, session-timer reminder added",
+    "excerpt_uk": "Експериментальний hex-патч audio-pool (v1.2.0-v1.2.1) ламав save-loading у completed-game saves — `TPopList::Pop` повертав garbage non-null pointer а не чистий NULL, тому наш null-check не спрацьовував. Patch повністю прибрано з UI і коду. Натомість додали soft-reminder: launcher слідкує за uptime DP.exe, через 3 години показує toast з рекомендацією перезапустити гру (це звільняє audio pool без потреби патчити exe). Технічний розбір + план для v1.3.0 у docs/AUDIO_POOL_LEAK.md.",
+    "excerpt_en": "The experimental audio-pool hex patch (v1.2.0-v1.2.1) broke save-loading on completed-game saves — `TPopList::Pop` returns garbage non-null pointers instead of clean NULL, so our null-check didn't catch it. Patch fully removed from UI and code. Replaced with a soft reminder: launcher monitors DP.exe uptime and surfaces a toast at 3 hours suggesting a game restart (drains the audio pool without binary patching). Technical writeup + v1.3.0 fix plan in docs/AUDIO_POOL_LEAK.md.",
+    "date":       "May 24, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v1.2.2"
+  },
+  {
     "title_uk":   "🧪 v1.2.0 — Audio Pool Safety Patch (експеримент) + RE звіт",
     "title_en":   "🧪 v1.2.0 — Audio Pool Safety Patch (experimental) + RE writeup",
     "excerpt_uk": "Через reverse engineering знайшли ще один корінь крашів DPC: пул audio-load-requests на 64 слоти без overflow-check. Коли катсцена крашиться → audio-thread не звільняє slot → leak → через кілька годин пул переповнюється → null deref CTD. Це і є друга причина long-session крашів (окрім FPS-timing bug). У новій версії додали ⚠ EXPERIMENTAL hex-патч (10 байтів у DP.exe) який додає null-check у Alloc. Замість крашу — повторне використання slot 0. Reversible через тоггл. Детальний розбір: docs/AUDIO_POOL_LEAK.md.",

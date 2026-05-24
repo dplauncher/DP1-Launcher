@@ -578,18 +578,6 @@
               <p class="compat-note" id="capture-cursor-note"></p>
             </details>
 
-            <details class="fix-item experimental">
-              <summary>
-                <span class="fix-item-title" data-i18n="audioPool.label">⚠ Audio Pool Safety (experimental)</span>
-                <label class="form-toggle" onclick="event.stopPropagation()">
-                  <input type="checkbox" id="audio-pool-toggle">
-                  <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
-                  <span class="form-toggle-label" id="audio-pool-label" data-i18n="saves.off">Off</span>
-                </label>
-              </summary>
-              <p class="settings-help fix-item-help" data-i18n="audioPool.help">⚠ EXPERIMENTAL: 10-байтовий hex-патч у DP.exe який додає null-check у audio-пул Alloc. Замість крашу при переповненні — повторне використання slot 0 (можлива звукова glitch). Створюємо .bak — revert через цей же тоггл.</p>
-              <p class="compat-note" id="audio-pool-note"></p>
-            </details>
 
           </section>
 
