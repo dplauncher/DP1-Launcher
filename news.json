@@ -1,5 +1,13 @@
 [
   {
+    "title_uk":   "🔬 v1.1.0 — Розгадали 10-річну загадку «куріння лікує краші»",
+    "title_en":   "🔬 v1.1.0 — Decade-old smoking-workaround mystery solved",
+    "excerpt_uk": "Через reverse engineering DP.exe знайдено корінь крашів у Chapter 9 diner, Chapter 8 gas station та інших: ceil()-формула delta-time у головному циклі дрейфує на FPS > 60, що ламає скриптові катсцени. Спільнота 10+ років обходила це курінням у грі — тепер можна просто лочити 60 FPS. Новий розділ DPC Fixes: FPS-cap з автодетектом GPU (NVIDIA/AMD/Intel), session-scoped codec-fix для катсценних крашів, persistent cursor-hide, DPfix CaptureCursor. Нова вкладка DXVK з cache-info. Saves redesign з визначенням персонажа. Повний технічний розбір — docs/FPS_TIMING_BUG.md.",
+    "excerpt_en": "Reverse-engineered DP.exe and found the root cause of crashes in Chapter 9 diner, Chapter 8 gas station, and other notorious spots: the main loop's ceil()-based delta time drifts at FPS > 60, breaking scripted cutscenes. The community has been smoking cigarettes in-game to advance time past broken state-machine transitions for 10+ years — turns out a 60 FPS driver cap is enough. New DPC Fixes panel: vendor-aware FPS-cap (NVIDIA/AMD/Intel), session-scoped codec fix for cutscene crashes, persistent cursor-hide, DPfix CaptureCursor toggle. New DXVK tab with cache info. Saves redesign with character detection from save offset 0x5CA. Full technical write-up in docs/FPS_TIMING_BUG.md.",
+    "date":       "May 24, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v1.1.0"
+  },
+  {
     "title_uk":   "🚀 v1.0.0 — Офіційний запуск на dplauncher",
     "title_en":   "🚀 v1.0.0 — Official launch on dplauncher",
     "excerpt_uk": "DP1 Launcher переїхав під офіційний org dplauncher. Свіжа збірка з усіма фічами: інтерактивна мапа Ґрінвейлу, Skip Intro Videos, повне скидання DXVK, кнопка повного reset, згортання в трей при запуску гри (щоб автобекапи продовжували працювати). Двомовний інтерфейс (UA/EN), повний першорун-візард, авто-оновлення.",
