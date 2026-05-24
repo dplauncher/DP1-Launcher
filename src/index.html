@@ -541,6 +541,19 @@
 
             <details class="fix-item">
               <summary>
+                <span class="fix-item-title" data-i18n="dxvkToggle.label">Use DXVK (Vulkan wrapper)</span>
+                <label class="form-toggle" onclick="event.stopPropagation()">
+                  <input type="checkbox" id="dxvk-toggle">
+                  <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                  <span class="form-toggle-label" id="dxvk-toggle-label" data-i18n="saves.off">Off</span>
+                </label>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n="dxvkToggle.help">DXVK перетворює D3D9 у Vulkan — допомагає на старих драйверах, але на RTX 40/50 + Win11 додає 2-3× до часу завантаження через JIT-компіляцію pipeline-ів. Вимкни для швидкого старту (native D3D9). DPfix-фікси (widescreen, FOV) лишаються активні в обох випадках.</p>
+              <p class="compat-note" id="dxvk-toggle-note"></p>
+            </details>
+
+            <details class="fix-item">
+              <summary>
                 <span class="fix-item-title" data-i18n="codecFix.label">Native codec priority</span>
                 <label class="form-toggle" onclick="event.stopPropagation()">
                   <input type="checkbox" id="codec-fix-toggle">

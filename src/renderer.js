@@ -323,12 +323,22 @@ function activateSettingsSection(name) {
   $$('.settings-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.section === name));
   $$('.settings-section').forEach(s => s.classList.toggle('active',  s.dataset.section === name));
 
+  // "Save Changes" only writes DPfix.ini (Graphics tab values). Other tabs
+  // auto-save to localStorage / apply immediately — hide the button there so
+  // it isn't misleading.
+  const apply = $('btn-apply');
+  const reset = $('btn-reset');
+  const isGraphics = name === 'graphics';
+  if (apply) apply.style.display = isGraphics ? '' : 'none';
+  if (reset) reset.style.display = isGraphics ? '' : 'none';
+
   // Refresh dynamic state when navigating into a section that needs it
   if (name === 'accessibility') {
     refreshCompatStatus();
     refreshSkipIntroStatus();
     refreshFpsCapStatus();
     refreshCodecFixStatus();
+    refreshDxvkToggleStatus();
     refreshCursorHideStatus();
     refreshCaptureCursorStatus();
   }
@@ -694,6 +704,7 @@ async function setupCompatBlock() {
   $('skip-intro-toggle')?.addEventListener('change', onSkipIntroToggle);
   $('btn-open-gpu-settings')?.addEventListener('click', onOpenGpuSettings);
   $('codec-fix-toggle')?.addEventListener('change',   onCodecFixToggle);
+  $('dxvk-toggle')?.addEventListener('change',        onDxvkToggle);
   $('cursor-hide-toggle')?.addEventListener('change', onCursorHideToggle);
   $('btn-dxvk-cache-refresh')?.addEventListener('click', refreshDxvkCacheStatus);
   $('btn-dxvk-cache-clean')?.addEventListener('click',   onDxvkCacheClean);
@@ -951,6 +962,114 @@ async function onCodecFixToggle(e) {
     showToast(t('toast.codecFixErr') + err.message, 'error');
   } finally {
     toggle.disabled = false;
+  }
+}
+
+// ═════════════════════════════════════════════
+// DXVK toggle (Vulkan wrapper on/off)
+// ON  → apply-dxvk-auto:  hex-patches game/d3d9.dll to forward to d9vk.dll +
+//                         copies DXVK d3d9.dll to SysWOW64\d9vk.dll
+// OFF → revert-dxvk-auto: restores game/d3d9.dll (from .bak or hex-undo) +
+//                         deletes SysWOW64\d9vk.dll
+//
+// In both states DPfix hex-patches in DP.exe stay active (widescreen/FOV/4GB
+// patch are baked into the exe, not the d3d9.dll wrapper). The only thing
+// this toggle controls is whether D3D9 calls go through Vulkan or native.
+// ═════════════════════════════════════════════
+async function refreshDxvkToggleStatus() {
+  const toggle = $('dxvk-toggle');
+  const label  = $('dxvk-toggle-label');
+  const note   = $('dxvk-toggle-note');
+  if (!toggle) return;
+  const gameDir = getGameDir();
+  if (!gameDir) {
+    toggle.disabled = true;
+    if (label) label.textContent = t('saves.off');
+    return;
+  }
+  try {
+    const r = await window.electronAPI.checkDxvkApplied?.(gameDir);
+    const applied = !!(r?.systemDll && r?.gamePatched);
+    toggle.disabled = false;
+    toggle.checked  = applied;
+    if (label) label.textContent = applied ? t('saves.on') : t('saves.off');
+    if (note) {
+      note.textContent = '';
+      note.className = 'compat-note';
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onDxvkToggle(e) {
+  const toggle = e.target;
+  const enable = toggle.checked;
+  toggle.checked = !enable;  // revert until we confirm
+
+  const gameDir = getGameDir();
+  if (!gameDir) {
+    showToast(t('toast.noGameDir') || 'Game dir unknown', 'error');
+    return;
+  }
+
+  if (!state.isAdmin) {
+    const goAdmin = await openConfirm({
+      title:      t('dxvkToggle.adminTitle'),
+      body:       t('dxvkToggle.adminBody'),
+      okText:     t('dxvkToggle.adminOk'),
+      cancelText: t('skipIntro.confirmCancel'),
+    });
+    if (goAdmin) {
+      const r = await window.electronAPI.relaunchAsAdmin();
+      if (!r?.accepted) showToast(t('toast.uacCancelled'), 'warn');
+    }
+    return;
+  }
+
+  const ok = await openConfirm({
+    title:      enable ? t('dxvkToggle.enableTitle') : t('dxvkToggle.disableTitle'),
+    body:       enable ? t('dxvkToggle.enableBody')  : t('dxvkToggle.disableBody'),
+    okText:     enable ? t('dxvkToggle.enableOk')    : t('dxvkToggle.disableOk'),
+    cancelText: t('skipIntro.confirmCancel'),
+  });
+  if (!ok) return;
+
+  const note  = $('dxvk-toggle-note');
+  const label = $('dxvk-toggle-label');
+  toggle.disabled = true;
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+
+  try {
+    const r = enable
+      ? await window.electronAPI.applyDxvkAuto?.(gameDir)
+      : await window.electronAPI.revertDxvkAuto?.(gameDir);
+    if (r?.success) {
+      toggle.checked = enable;
+      if (label) label.textContent = enable ? t('saves.on') : t('saves.off');
+      if (note) {
+        note.textContent = (r.steps || []).join(' · ');
+        note.className   = 'compat-note ok';
+      }
+      showToast(enable ? t('toast.dxvkApplied') : t('toast.dxvkReverted'), 'success');
+      logActivity(enable ? 'completed' : 'info',
+                  enable ? 'DXVK enabled — d3d9.dll patched, SysWOW64\\d9vk.dll installed'
+                         : 'DXVK disabled — d3d9.dll restored, SysWOW64\\d9vk.dll removed');
+    } else {
+      const errMsg = r?.error || 'failed';
+      const needsAdmin = /admin/i.test(errMsg);
+      if (note) {
+        note.textContent = needsAdmin ? t('dxvkToggle.needAdmin') : errMsg;
+        note.className = 'compat-note error';
+      }
+      showToast((enable ? t('toast.dxvkApplyErr') : t('toast.dxvkRevertErr')) + errMsg, 'error');
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+    showToast((enable ? t('toast.dxvkApplyErr') : t('toast.dxvkRevertErr')) + err.message, 'error');
+  } finally {
+    toggle.disabled = false;
+    refreshDxvkRevertStatus?.();
   }
 }
 
