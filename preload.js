@@ -32,6 +32,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkDxvkApplied: (gameDir)           => ipcRenderer.invoke('check-dxvk-applied', { gameDir }),
   checkSkipIntro:   (exePath)           => ipcRenderer.invoke('check-skip-intro', { exePath }),
   applySkipIntro:   (exePath, enable)   => ipcRenderer.invoke('apply-skip-intro', { exePath, enable }),
+  checkFpsCap:      (gameDir)           => ipcRenderer.invoke('check-fps-cap',   { gameDir }),
+  applyFpsCap:      (gameDir, enable)   => ipcRenderer.invoke('apply-fps-cap',   { gameDir, enable }),
+  openGpuSettings:  (vendor)            => ipcRenderer.invoke('open-gpu-settings', { vendor }),
+  dxvkCacheInfo:    (gameDir)           => ipcRenderer.invoke('dxvk-cache-info', { gameDir }),
+  dxvkCacheClean:   (gameDir)           => ipcRenderer.invoke('dxvk-cache-clean', { gameDir }),
+  checkCodecFix:    ()                  => ipcRenderer.invoke('check-codec-fix'),
+  startCodecFix:    (processName)       => ipcRenderer.invoke('start-codec-fix', { processName }),
+  stopCodecFix:     ()                  => ipcRenderer.invoke('stop-codec-fix'),
+  startCursorHide:  (processName)       => ipcRenderer.invoke('start-cursor-hide', { processName }),
+  stopCursorHide:   ()                  => ipcRenderer.invoke('stop-cursor-hide'),
+  checkCaptureCursor:(gameDir)          => ipcRenderer.invoke('check-capture-cursor', { gameDir }),
+  applyCaptureCursor:(gameDir, enable)  => ipcRenderer.invoke('apply-capture-cursor', { gameDir, enable }),
   setSteamOverlay:  (appId, enabled)    => ipcRenderer.invoke('set-steam-overlay', { appId, enabled }),
 
   // ── Persistent settings ───────────────────────

@@ -81,6 +81,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadAppVersion();
   await autoFindIni();
   await restoreAutosaveState();
+  await restoreCursorHideState();
   await maybeShowFirstRun();
 
   checkForUpdates();
@@ -312,8 +313,17 @@ function activateSettingsSection(name) {
   $$('.settings-section').forEach(s => s.classList.toggle('active',  s.dataset.section === name));
 
   // Refresh dynamic state when navigating into a section that needs it
-  if (name === 'accessibility') { refreshCompatStatus(); refreshSkipIntroStatus(); }
+  if (name === 'accessibility') {
+    refreshCompatStatus();
+    refreshSkipIntroStatus();
+    refreshFpsCapStatus();
+    refreshCodecFixStatus();
+    refreshCursorHideStatus();
+    refreshCaptureCursorStatus();
+  }
   if (name === 'graphics')      refreshDxvkRevertStatus();
+  if (name === 'dxvk')          refreshDxvkCacheStatus();
+  if (name === 'advanced')      renderSavesList();
   if (name === 'log')           renderActivity();
 }
 
@@ -671,6 +681,12 @@ async function setupCompatBlock() {
   $('btn-compat-win98')?.addEventListener('click',  () => toggleCompat('win98'));
 
   $('skip-intro-toggle')?.addEventListener('change', onSkipIntroToggle);
+  $('btn-open-gpu-settings')?.addEventListener('click', onOpenGpuSettings);
+  $('codec-fix-toggle')?.addEventListener('change',   onCodecFixToggle);
+  $('cursor-hide-toggle')?.addEventListener('change', onCursorHideToggle);
+  $('btn-dxvk-cache-refresh')?.addEventListener('click', refreshDxvkCacheStatus);
+  $('btn-dxvk-cache-clean')?.addEventListener('click',   onDxvkCacheClean);
+  $('capture-cursor-toggle')?.addEventListener('change', onCaptureCursorToggle);
 }
 
 async function refreshSkipIntroStatus() {
@@ -750,6 +766,458 @@ async function onSkipIntroToggle(e) {
     showToast(t('toast.skipIntroErr') + err.message, 'error');
   } finally {
     toggle.disabled = false;
+  }
+}
+
+// ═════════════════════════════════════════════
+// FPS Cap 60 — vendor-panel-only (button + step-by-step instructions).
+// dxvk.maxFrameRate proved unreliable on Win 11 + VRR setups, so we
+// only expose the authoritative path: the user's GPU control panel.
+// We detect the vendor (NVIDIA/AMD/Intel), render exact step-by-step
+// instructions, and open the right panel with one click.
+// ═════════════════════════════════════════════
+const VENDOR_DISPLAY = { nvidia: 'NVIDIA', amd: 'AMD', intel: 'Intel', unknown: '—' };
+
+// Step-by-step localized via i18n keys (fpsCap.steps.<vendor>.N).
+function vendorStepKeys(vendor) {
+  const n = vendor === 'unknown' ? 0 : 4;
+  return Array.from({ length: n }, (_, i) => `fpsCap.steps.${vendor}.${i + 1}`);
+}
+
+async function refreshFpsCapStatus() {
+  const note         = $('fps-cap-note');
+  const gpuBtn       = $('btn-open-gpu-settings');
+  const vendorBadge  = $('fps-cap-vendor-badge');
+  const stepsBox     = $('fps-cap-instructions');
+
+  try {
+    // gameDir is optional now — we only use it to record the (legacy) dxvk.conf
+    // state for diagnostics; the UI doesn't depend on it.
+    const gameDir = getGameDir();
+    const r = await window.electronAPI.checkFpsCap?.(gameDir);
+    const vendor = r?.vendor || 'unknown';
+    const vendorName = VENDOR_DISPLAY[vendor];
+
+    if (vendorBadge) vendorBadge.textContent = vendorName;
+
+    if (gpuBtn) {
+      gpuBtn.dataset.vendor = vendor;
+      gpuBtn.disabled       = !r?.vendorToolAvailable;
+      gpuBtn.textContent    = r?.vendorToolAvailable
+        ? t('fpsCap.openGpuVendor').replace('{vendor}', vendorName)
+        : t('fpsCap.openGpu');
+    }
+
+    if (stepsBox) {
+      const keys = vendorStepKeys(vendor);
+      if (!keys.length) {
+        stepsBox.innerHTML = `<p class="settings-help fix-item-help">${t('fpsCap.steps.unknown')}</p>`;
+      } else {
+        stepsBox.innerHTML = '<ol class="fps-cap-steps">' +
+          keys.map(k => `<li>${t(k)}</li>`).join('') +
+          '</ol>';
+      }
+    }
+
+    if (note) { note.textContent = ''; note.className = 'compat-note'; }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onOpenGpuSettings(e) {
+  const btn = e.currentTarget;
+  const vendor = btn?.dataset.vendor || 'unknown';
+  const note   = $('fps-cap-note');
+  try {
+    const r = await window.electronAPI.openGpuSettings?.(vendor);
+    if (r?.success) {
+      if (note) {
+        note.textContent = t('fpsCap.gpuOpenedHint').replace('{vendor}', VENDOR_DISPLAY[vendor] || vendor);
+        note.className   = 'compat-note ok';
+      }
+      logActivity('info', `Opened ${vendor} control panel for FPS-cap setup`);
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+      showToast(t('toast.fpsCapGpuErr') + (r?.error || ''), 'error');
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+    showToast(t('toast.fpsCapGpuErr') + err.message, 'error');
+  }
+}
+
+// ═════════════════════════════════════════════
+// Codec Fix (session-scoped LAV merit lowering)
+// Toggle starts/stops a detached PS watcher that:
+//   1. Backs up LAV FilterData blobs from HKLM
+//   2. Lowers their merit to MERIT_DO_NOT_USE
+//   3. Waits for DP.exe to exit
+//   4. Restores originals automatically
+// Auto-revert on game close means the user never has to remember to undo.
+// ═════════════════════════════════════════════
+async function refreshCodecFixStatus() {
+  const toggle = $('codec-fix-toggle');
+  const label  = $('codec-fix-label');
+  const note   = $('codec-fix-note');
+  if (!toggle) return;
+
+  try {
+    const r = await window.electronAPI.checkCodecFix?.();
+    if (!r?.lavInstalled) {
+      toggle.checked  = false;
+      toggle.disabled = true;
+      if (label) label.textContent = t('saves.off');
+      if (note)  { note.textContent = t('codecFix.noLav'); note.className = 'compat-note'; }
+      return;
+    }
+
+    toggle.disabled = false;
+    toggle.checked  = !!r.sessionActive;
+    if (label) label.textContent = r.sessionActive ? t('saves.on') : t('saves.off');
+    if (note)  {
+      note.textContent = r.sessionActive ? t('codecFix.active') : '';
+      note.className   = 'compat-note';
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onCodecFixToggle(e) {
+  const toggle = e.target;
+  const enable = toggle.checked;
+  toggle.checked = !enable;
+
+  if (enable && !state.isAdmin) {
+    const goAdmin = await openConfirm({
+      title:      t('codecFix.adminTitle'),
+      body:       t('codecFix.adminBody'),
+      okText:     t('codecFix.adminOk'),
+      cancelText: t('skipIntro.confirmCancel'),
+    });
+    if (goAdmin) {
+      const r = await window.electronAPI.relaunchAsAdmin();
+      if (!r?.accepted) showToast(t('toast.uacCancelled'), 'warn');
+    }
+    return;
+  }
+
+  const ok = await openConfirm({
+    title:      t('codecFix.confirmTitle'),
+    body:       enable ? t('codecFix.confirmBody') : t('codecFix.revertBody'),
+    okText:     enable ? t('codecFix.confirmOk')   : t('codecFix.revertOk'),
+    cancelText: t('skipIntro.confirmCancel'),
+  });
+  if (!ok) return;
+
+  const note  = $('codec-fix-note');
+  const label = $('codec-fix-label');
+  toggle.disabled = true;
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+
+  try {
+    const r = enable
+      ? await window.electronAPI.startCodecFix?.('DP')
+      : await window.electronAPI.stopCodecFix?.();
+    if (r?.success) {
+      toggle.checked  = enable;
+      if (label) label.textContent = enable ? t('saves.on') : t('saves.off');
+      if (note)  {
+        note.textContent = enable ? t('codecFix.active') : '';
+        note.className   = 'compat-note';
+      }
+      showToast(enable ? t('toast.codecFixOn') : t('toast.codecFixOff'), 'success');
+      logActivity(enable ? 'completed' : 'info',
+                  enable ? 'Codec-Fix session started (LAV merit → DO_NOT_USE for this game session)'
+                         : 'Codec-Fix session stopped (LAV merits restored)');
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+      showToast(t('toast.codecFixErr') + (r?.error || ''), 'error');
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+    showToast(t('toast.codecFixErr') + err.message, 'error');
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+// ═════════════════════════════════════════════
+// Cursor Hide (background PS watcher) — preference persists across launcher
+// restarts. On launcher startup, if the preference is ON, the watcher is
+// auto-spawned (it'll sit waiting for DP.exe to start, then attach). User
+// only flips the toggle once.
+// ═════════════════════════════════════════════
+async function refreshCursorHideStatus() {
+  // Reads saved preference and reflects it in the toggle. Does NOT spawn
+  // a new watcher — that happens on toggle change or on initial restore.
+  const toggle = $('cursor-hide-toggle');
+  const label  = $('cursor-hide-label');
+  const note   = $('cursor-hide-note');
+  if (!toggle) return;
+  try {
+    const saved   = await window.electronAPI.settingsRead();
+    const enabled = !!saved.cursorHideEnabled;
+    toggle.checked = enabled;
+    toggle.disabled = false;
+    if (label) label.textContent = enabled ? t('saves.on') : t('saves.off');
+    if (note)  {
+      note.textContent = enabled ? t('cursorHide.active') : '';
+      note.className   = 'compat-note';
+    }
+  } catch { /* ignore */ }
+}
+
+async function restoreCursorHideState() {
+  // Called once at launcher startup, after loadPersistedSettings. If the
+  // user had cursor-hide enabled in a previous session, fire up the
+  // detached watcher again so it's ready by the time they launch the game.
+  try {
+    const saved = await window.electronAPI.settingsRead();
+    if (saved.cursorHideEnabled) {
+      await window.electronAPI.startCursorHide?.('DP');
+    }
+  } catch { /* ignore */ }
+}
+
+async function onCursorHideToggle(e) {
+  const toggle = e.target;
+  const enable = toggle.checked;
+  toggle.checked = !enable;
+
+  const note  = $('cursor-hide-note');
+  const label = $('cursor-hide-label');
+  toggle.disabled = true;
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+
+  try {
+    const r = enable
+      ? await window.electronAPI.startCursorHide?.('DP')
+      : await window.electronAPI.stopCursorHide?.();
+    if (r?.success) {
+      toggle.checked  = enable;
+      if (label) label.textContent = enable ? t('saves.on') : t('saves.off');
+      if (note)  {
+        note.textContent = enable ? t('cursorHide.active') : '';
+        note.className   = 'compat-note';
+      }
+      // Persist preference so the watcher auto-starts on next launcher run.
+      await persistSettings({ cursorHideEnabled: enable });
+      showToast(enable ? t('toast.cursorHideOn') : t('toast.cursorHideOff'), 'success');
+      logActivity('info',
+                  enable ? 'Cursor-hide watcher started (waiting for DP.exe)'
+                         : 'Cursor-hide watcher stopped');
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+      showToast(t('toast.cursorHideErr') + (r?.error || ''), 'error');
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+    showToast(t('toast.cursorHideErr') + err.message, 'error');
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+// ═════════════════════════════════════════════
+// DPfix CaptureCursor — writes/removes `CaptureCursor N` in DPfix.ini.
+// Works at the D3D9 wrapper layer, alternative to our PS-based watcher.
+// Persistent (lives in INI), no separate process needed.
+// ═════════════════════════════════════════════
+async function refreshCaptureCursorStatus() {
+  const toggle = $('capture-cursor-toggle');
+  const label  = $('capture-cursor-label');
+  const note   = $('capture-cursor-note');
+  if (!toggle) return;
+
+  const gameDir = getGameDir();
+  if (!gameDir) {
+    toggle.checked  = false;
+    toggle.disabled = true;
+    if (label) label.textContent = t('saves.off');
+    if (note)  { note.textContent = t('skipIntro.noExe'); note.className = 'compat-note'; }
+    return;
+  }
+
+  try {
+    const r = await window.electronAPI.checkCaptureCursor?.(gameDir);
+    if (!r?.iniExists) {
+      toggle.checked  = false;
+      toggle.disabled = true;
+      if (label) label.textContent = t('saves.off');
+      if (note)  { note.textContent = t('captureCursor.noIni'); note.className = 'compat-note error'; }
+      return;
+    }
+    toggle.disabled = false;
+    toggle.checked  = !!r.applied;
+    if (label) label.textContent = r.applied ? t('saves.on') : t('saves.off');
+    if (note)  { note.textContent = ''; note.className = 'compat-note'; }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onCaptureCursorToggle(e) {
+  const toggle = e.target;
+  const enable = toggle.checked;
+  toggle.checked = !enable;
+
+  const gameDir = getGameDir();
+  if (!gameDir) {
+    showToast(t('skipIntro.noExe'), 'warn');
+    return;
+  }
+
+  const note  = $('capture-cursor-note');
+  const label = $('capture-cursor-label');
+  toggle.disabled = true;
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+
+  try {
+    const r = await window.electronAPI.applyCaptureCursor?.(gameDir, enable);
+    if (r?.success) {
+      toggle.checked = enable;
+      if (label) label.textContent = enable ? t('saves.on') : t('saves.off');
+      if (note)  {
+        note.textContent = enable ? t('captureCursor.activeHint') : '';
+        note.className   = 'compat-note';
+      }
+      showToast(enable ? t('toast.captureCursorOn') : t('toast.captureCursorOff'), 'success');
+      logActivity(enable ? 'completed' : 'info',
+                  enable ? 'DPfix CaptureCursor enabled in DPfix.ini'
+                         : 'DPfix CaptureCursor disabled in DPfix.ini');
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+      showToast(t('toast.captureCursorErr') + (r?.error || ''), 'error');
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+    showToast(t('toast.captureCursorErr') + err.message, 'error');
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+// ═════════════════════════════════════════════
+// DXVK Cache — info display + cleanup. On modern drivers DXVK delegates
+// shader caching to the driver (NVIDIA DXCache / AMD DxCache), so the
+// per-game .dxvk-cache file often doesn't exist. We still surface the
+// state honestly + offer cleanup if the file is there.
+// ═════════════════════════════════════════════
+function humanBytes(n) {
+  if (!n) return '0 B';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function humanDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch { return iso; }
+}
+
+async function refreshDxvkCacheStatus() {
+  const grid    = $('dxvk-cache-grid');
+  const badge   = $('dxvk-cache-badge');
+  const cleanBtn = $('btn-dxvk-cache-clean');
+  const note    = $('dxvk-cache-note');
+  if (!grid) return;
+
+  const gameDir = getGameDir();
+  if (!gameDir) {
+    grid.innerHTML = '';
+    if (badge) badge.textContent = '—';
+    if (cleanBtn) cleanBtn.disabled = true;
+    if (note) { note.textContent = t('skipIntro.noExe'); note.className = 'compat-note'; }
+    return;
+  }
+
+  try {
+    const r = await window.electronAPI.dxvkCacheInfo?.(gameDir);
+    if (!r) {
+      if (note) { note.textContent = 'no data'; note.className = 'compat-note error'; }
+      return;
+    }
+    const dxvkCount = r.dxvk?.files?.length || 0;
+    const dxvkSize  = r.dxvk?.totalSize || 0;
+    const nvidiaSize  = r.driver?.nvidiaDxCache?.totalSize || 0;
+    const nvidiaCount = r.driver?.nvidiaDxCache?.fileCount || 0;
+    const amdSize     = r.driver?.amdShaderCache?.totalSize || 0;
+    const amdCount    = r.driver?.amdShaderCache?.fileCount || 0;
+
+    if (badge) {
+      badge.textContent = dxvkCount > 0
+        ? humanBytes(dxvkSize)
+        : t('dxvkCache.driverOnly');
+    }
+    if (cleanBtn) cleanBtn.disabled = dxvkCount === 0;
+
+    // Build info grid
+    const rows = [];
+    rows.push(`<div class="info-grid-row">
+      <span class="info-grid-key">${t('dxvkCache.dxvkLabel')}</span>
+      <span class="info-grid-val">${
+        dxvkCount > 0
+          ? `${dxvkCount} file(s), ${humanBytes(dxvkSize)}, ${humanDate(r.dxvk.newestMtime)}`
+          : `<em>${t('dxvkCache.dxvkNone')}</em>`
+      }</span>
+    </div>`);
+    if (nvidiaSize > 0) {
+      rows.push(`<div class="info-grid-row">
+        <span class="info-grid-key">${t('dxvkCache.nvidiaLabel')}</span>
+        <span class="info-grid-val">${nvidiaCount} file(s), ${humanBytes(nvidiaSize)}, ${humanDate(r.driver.nvidiaDxCache.newestMtime)}</span>
+      </div>`);
+    }
+    if (amdSize > 0) {
+      rows.push(`<div class="info-grid-row">
+        <span class="info-grid-key">${t('dxvkCache.amdLabel')}</span>
+        <span class="info-grid-val">${amdCount} file(s), ${humanBytes(amdSize)}, ${humanDate(r.driver.amdShaderCache.newestMtime)}</span>
+      </div>`);
+    }
+    grid.innerHTML = rows.join('');
+
+    if (note) {
+      if (dxvkCount === 0 && (nvidiaSize > 0 || amdSize > 0)) {
+        note.textContent = t('dxvkCache.noteDriverOnly');
+        note.className   = 'compat-note';
+      } else {
+        note.textContent = '';
+        note.className   = 'compat-note';
+      }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onDxvkCacheClean() {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const ok = await openConfirm({
+    title:      t('dxvkCache.cleanTitle'),
+    body:       t('dxvkCache.cleanBody'),
+    okText:     t('dxvkCache.cleanOk'),
+    cancelText: t('skipIntro.confirmCancel'),
+    danger:     true,
+  });
+  if (!ok) return;
+  try {
+    const r = await window.electronAPI.dxvkCacheClean?.(gameDir);
+    if (r?.success) {
+      showToast(t('toast.dxvkCacheCleaned').replace('{n}', r.deleted), 'success');
+      logActivity('info', `DXVK cache cleaned: ${r.deleted} file(s)`);
+      await refreshDxvkCacheStatus();
+    } else {
+      showToast(t('toast.dxvkCacheErr') + (r?.error || r?.errors?.join('; ') || 'failed'), 'error');
+    }
+  } catch (err) {
+    showToast(t('toast.dxvkCacheErr') + err.message, 'error');
   }
 }
 
@@ -837,8 +1305,23 @@ async function toggleCompat(mode) {
   }
 }
 
-function onGamePathChanged() {
+async function onGamePathChanged() {
   updateAdminBanner();
+  // (Re)start autosave worker whenever the game path changes — fixes the
+  // case where state.gamePath gets set AFTER restoreAutosaveState() has
+  // already run (e.g. first-run wizard, or browse-exe on a launcher with
+  // no settings.json). Idempotent: stop+start.
+  try {
+    const saved = await window.electronAPI.settingsRead();
+    const enabled = saved.autosaveEnabled !== false; // default ON
+    if (enabled && state.gamePath) {
+      const gameDir = state.gamePath.replace(/[^\\\/]*$/, '').replace(/[\\\/]$/, '');
+      await window.electronAPI.autosaveStop?.();
+      await window.electronAPI.autosaveStart(gameDir, 120000);
+      const note = $('autosave-note');
+      if (note) { note.textContent = 'Auto-backup активне ✓'; note.className = 'compat-note ok'; }
+    }
+  } catch { /* ignore */ }
 }
 
 // ─── DXVK ─────────────────────────────────────
@@ -969,18 +1452,173 @@ function setupAutosaveBlock() {
 
   window.electronAPI.onAutosaveEvent?.((msg) => {
     const note = $('autosave-note');
-    if (!note) return;
     if (msg.type === 'backup-created') {
-      note.textContent = `Backup created — ${msg.timestamp}`;
-      note.className   = 'compat-note ok';
+      if (note) {
+        note.textContent = `Backup created — ${msg.timestamp}`;
+        note.className   = 'compat-note ok';
+      }
+      // Re-render the backups list so the new entry appears immediately.
+      renderSavesList();
     } else if (msg.type === 'no-save') {
-      note.textContent = 'dp.sav not found.'; note.className = 'compat-note error';
+      if (note) { note.textContent = 'dp.sav not found.'; note.className = 'compat-note error'; }
       $('autosave-toggle').checked = false;
     } else if (msg.type === 'error') {
-      note.textContent = 'Auto-backup error: ' + msg.error;
-      note.className = 'compat-note error';
+      if (note) {
+        note.textContent = 'Auto-backup error: ' + msg.error;
+        note.className = 'compat-note error';
+      }
     }
   });
+}
+
+// ═════════════════════════════════════════════
+// Saves List
+// Reads `savesList(gameDir)` → renders one card per backup, with
+// description input + Restore / Delete buttons.
+// ═════════════════════════════════════════════
+function formatBackupDate(iso) {
+  try {
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch { return iso; }
+}
+
+function formatBackupSize(bytes) {
+  if (typeof bytes !== 'number') return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+// Character byte at save offset 0x5CA (per Steam community RE).
+const SAVE_CHARACTERS = {
+  0: 'York',
+  1: 'Emily',
+  2: 'Kid York',
+  3: 'Raincoat Killer',
+  4: 'Zach',
+};
+function characterName(byte) {
+  if (byte === null || byte === undefined) return null;
+  return SAVE_CHARACTERS[byte] || `#${byte}`;
+}
+
+function escapeAttr(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function renderSavesList() {
+  const list = $('saves-list');
+  if (!list) return;
+
+  const gameDir = getGameDir();
+  if (!gameDir) {
+    list.innerHTML = `<p class="settings-placeholder" id="saves-empty">${t('saves.empty')}</p>`;
+    return;
+  }
+
+  let entries = [];
+  try { entries = await window.electronAPI.savesList?.(gameDir) || []; }
+  catch { entries = []; }
+
+  if (!entries.length) {
+    list.innerHTML = `<p class="settings-placeholder" id="saves-empty">${t('saves.empty')}</p>`;
+    return;
+  }
+
+  list.innerHTML = entries.map((e, idx) => {
+    const date = formatBackupDate(e.date);
+    const size = formatBackupSize(e.size);
+    const char = characterName(e.character);
+    // Compact metaline shown in summary: description (if any) • character • size
+    const metaParts = [];
+    if (e.description) metaParts.push(`<span class="save-item-desc-inline">${escapeAttr(e.description)}</span>`);
+    if (char)          metaParts.push(`<span class="save-item-char">${escapeAttr(char)}</span>`);
+    if (size)          metaParts.push(`<span class="save-item-size">${size}</span>`);
+    const metaHtml = metaParts.join(' <span class="save-item-sep">·</span> ');
+
+    return `
+      <details class="save-item" data-id="${escapeAttr(e.id)}"${idx === 0 ? ' open' : ''}>
+        <summary>
+          <span class="save-item-date">${date}</span>
+          <span class="save-item-meta">${metaHtml}</span>
+        </summary>
+        <div class="save-item-body">
+          <input
+            type="text"
+            class="save-item-desc"
+            placeholder="${escapeAttr(t('saves.descPlaceholder'))}"
+            value="${escapeAttr(e.description || '')}"
+          />
+          <div class="save-item-actions">
+            <button class="btn-secondary btn-compact save-restore" data-id="${escapeAttr(e.id)}">${t('saves.restore')}</button>
+            <button class="btn-secondary btn-compact save-delete"  data-id="${escapeAttr(e.id)}">${t('saves.delete')}</button>
+          </div>
+        </div>
+      </details>
+    `;
+  }).join('');
+
+  // Wire actions
+  list.querySelectorAll('.save-restore').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.preventDefault(); onSaveRestore(btn.dataset.id); });
+  });
+  list.querySelectorAll('.save-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.preventDefault(); onSaveDelete(btn.dataset.id); });
+  });
+  list.querySelectorAll('.save-item-desc').forEach(inp => {
+    inp.addEventListener('change', () => onSaveDescChange(inp.closest('.save-item').dataset.id, inp.value));
+    // Don't toggle <details> when typing in description
+    inp.addEventListener('click', (e) => e.stopPropagation());
+  });
+}
+
+async function onSaveRestore(id) {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const ok = await openConfirm({
+    title:      t('saves.restoreTitle'),
+    body:       t('dyn.savesConfirmRestore').replace('{id}', id),
+    okText:     t('saves.restoreOk'),
+    cancelText: t('skipIntro.confirmCancel'),
+  });
+  if (!ok) return;
+  try {
+    await window.electronAPI.savesRestore(gameDir, id);
+    showToast(t('dyn.savesRestored'), 'success');
+    logActivity('completed', `Save restored from backup ${id}`);
+  } catch (err) {
+    showToast(t('toast.saveRestoreErr') + err.message, 'error');
+  }
+}
+
+async function onSaveDelete(id) {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const ok = await openConfirm({
+    title:      t('saves.deleteTitle'),
+    body:       t('dyn.savesConfirmDelete').replace('{id}', id),
+    okText:     t('saves.deleteOk'),
+    cancelText: t('skipIntro.confirmCancel'),
+    danger:     true,
+  });
+  if (!ok) return;
+  try {
+    await window.electronAPI.savesDelete(gameDir, id);
+    showToast(t('dyn.savesDeleted'), 'success');
+    logActivity('info', `Save backup ${id} deleted`);
+    renderSavesList();
+  } catch (err) {
+    showToast(t('toast.saveDeleteErr') + err.message, 'error');
+  }
+}
+
+async function onSaveDescChange(id, desc) {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  try { await window.electronAPI.savesSetDesc(gameDir, id, desc); }
+  catch { /* silent */ }
 }
 
 async function restoreAutosaveState() {
@@ -1961,6 +2599,10 @@ async function runFirstRunInstall() {
   await persistSettings({ gamePath: firstRunState.exePath });
   const gp = $('game-path');
   if (gp) gp.value = firstRunState.exePath;
+
+  // gamePath just landed — kick the gamePath-changed hook so the autosave
+  // worker actually starts. Without this the worker stays dead on first-run.
+  await onGamePathChanged();
 
   // Lock UI
   $('btn-firstrun-install').disabled = true;

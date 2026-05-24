@@ -92,8 +92,41 @@ function start(gameDir, interval) {
     return;
   }
 
-  // Record initial hash
-  lastHash = hashFile(savePath);
+  // Initial snapshot — create one backup right away (deduped if an identical
+  // copy already exists in backups/), so the user immediately sees a backup
+  // entry instead of waiting up to `intervalMs` for the first change. Without
+  // this, the worker silently records the hash and produces no visible
+  // activity until the second save is detected — confusing UX.
+  try {
+    const initialHash = hashFile(savePath);
+
+    let alreadyBackedUp = false;
+    try {
+      const dirs = fs.readdirSync(backupsDir, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => path.join(backupsDir, d.name, 'dp.sav'))
+        .filter(p => fs.existsSync(p));
+      for (const p of dirs) {
+        if (hashFile(p) === initialHash) { alreadyBackedUp = true; break; }
+      }
+    } catch {}
+
+    if (!alreadyBackedUp) {
+      const timestamp = formatTimestamp();
+      const destDir   = path.join(backupsDir, timestamp);
+      fs.mkdirSync(destDir, { recursive: true });
+      fs.copyFileSync(savePath, path.join(destDir, 'dp.sav'));
+      parentPort.postMessage({
+        type:       'backup-created',
+        backupPath: path.join(destDir, 'dp.sav'),
+        timestamp,
+      });
+    }
+    lastHash = initialHash;
+  } catch (err) {
+    parentPort.postMessage({ type: 'error', error: 'initial snapshot: ' + err.message });
+    lastHash = hashFile(savePath); // fall back to just recording the hash
+  }
 
   timer = setInterval(checkAndBackup, intervalMs);
   parentPort.postMessage({ type: 'started', savePath });

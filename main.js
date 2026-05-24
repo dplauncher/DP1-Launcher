@@ -1174,6 +1174,525 @@ ipcMain.handle('apply-skip-intro', async (_event, { exePath, enable }) => {
 });
 
 // ─────────────────────────────────────────────
+// IPC – FPS Cap 60 (universal)
+//
+// The DP engine was designed for fixed 30/60 FPS. At higher framerates,
+// its delta-time math (FUN_0041c270 / FUN_00700650 selector) breaks
+// either timing accuracy (Path A: ceil drift) or physics smoothness
+// (Path B: integer-step stutter). 60 FPS is the only mode where both
+// paths produce identical, correct results.
+//
+// Implementation strategy (in order of effectiveness):
+//
+//   1. Primary: write `dxvk.maxFrameRate = 60` to <gameDir>/dxvk.conf
+//      — DXVK is bundled by this launcher's first-run install, so this
+//        works regardless of GPU vendor (NVIDIA/AMD/Intel).
+//      — DXVK enforces the cap via Sleep() at present-time, independent
+//        of VSync / monitor refresh.
+//
+//   2. Fallback: detect the user's GPU vendor (NVIDIA / AMD / Intel) and
+//      offer a button that opens the vendor's control panel, with a
+//      modal showing where to set the per-game cap manually.
+//      — Some users disable DXVK, or DXVK config gets bypassed by VSync
+//        on certain driver versions; the vendor cap is authoritative.
+// ─────────────────────────────────────────────
+const DXVK_CONF_FILENAME = 'dxvk.conf';
+const FPS_CAP_KEY        = 'dxvk.maxFrameRate';
+const FPS_CAP_VALUE      = '60';
+
+// Vendor tools tried in order; first match wins. Mix of:
+//   { exe: '<path>' }  — classic exe, launch via execFile
+//   { uwp: '<pkgFamily!appId>' } — UWP app, launch via shell:appsFolder
+const VENDOR_TOOLS = {
+  nvidia: [
+    // Legacy desktop NVCP — preferred when present (has the per-program
+    // "Max Frame Rate" page; NVIDIA App opens GeForce-Experience-style
+    // UI that doesn't expose this setting directly).
+    { exe: 'C:\\Program Files\\NVIDIA Corporation\\Control Panel Client\\nvcplui.exe' },
+    { exe: 'C:\\Program Files (x86)\\NVIDIA Corporation\\Control Panel Client\\nvcplui.exe' },
+    // UWP NVIDIA Control Panel (Win 10+ Microsoft Store version) — also
+    // has the Program Settings tab with Max Frame Rate.
+    { uwp: 'NVIDIACorp.NVIDIAControlPanel_56jybvy8sckqj!NVIDIACorp.NVIDIAControlPanel' },
+    // NVIDIA App / GeForce Experience — last resort, lacks the legacy
+    // per-program FPS cap page.
+    { exe: 'C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\CEF\\NVIDIA app.exe' },
+    { exe: 'C:\\Program Files (x86)\\NVIDIA Corporation\\NVIDIA App\\CEF\\NVIDIA app.exe' },
+  ],
+  amd: [
+    // Modern AMD Adrenalin (Radeon Software)
+    { exe: 'C:\\Program Files\\AMD\\CNext\\CNext\\RadeonSoftware.exe' },
+    { exe: 'C:\\Program Files\\AMD\\CNext\\CNext\\cnext.exe' },
+    // UWP fallback if installed via Store
+    { uwp: 'AdvancedMicroDevicesInc-2.AMDRadeonSoftware_0a9344xs7nr4m!App' },
+  ],
+  intel: [
+    // Intel Graphics Command Center (UWP, primary)
+    { uwp: 'AppUp.IntelGraphicsExperience_8j3eq9eme6ctt!App' },
+    // Older Intel HD Graphics Control Panel (legacy)
+    { exe: 'C:\\Windows\\System32\\IntelGraphicsExperience.exe' },
+  ],
+};
+
+function parseDxvkConf(text) {
+  const map = new Map();
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq === -1) continue;
+    map.set(line.slice(0, eq).trim(), line.slice(eq + 1).trim());
+  }
+  return map;
+}
+
+function stringifyDxvkConf(map) {
+  if (!map.size) return '';
+  const lines = [];
+  for (const [k, v] of map) lines.push(`${k} = ${v}`);
+  return lines.join('\n') + '\n';
+}
+
+async function readDxvkConf(gameDir) {
+  const confPath = path.join(gameDir, DXVK_CONF_FILENAME);
+  try {
+    const content = await fs.promises.readFile(confPath, 'utf-8');
+    return { confPath, map: parseDxvkConf(content) };
+  } catch {
+    return { confPath, map: new Map() };
+  }
+}
+
+/** Detect installed GPU vendor via WMI; falls back to checking known DLLs. */
+async function detectGpuVendor() {
+  try {
+    const out = await psExec(
+      "Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | " +
+      "ForEach-Object { $_.Name } | Out-String"
+    );
+    const lower = out.toLowerCase();
+    if (lower.includes('nvidia') || lower.includes('geforce') || lower.includes('quadro')) return 'nvidia';
+    if (lower.includes('amd')    || lower.includes('radeon')) return 'amd';
+    if (lower.includes('intel')) return 'intel';
+  } catch {}
+  // Fallback: presence of vendor DLLs in System32
+  const sys32 = 'C:\\Windows\\System32\\';
+  for (const [vendor, dll] of [['nvidia','nvapi64.dll'],['amd','atiumdag.dll'],['intel','igd9d8umd32.dll']]) {
+    try { await fs.promises.access(sys32 + dll); return vendor; } catch {}
+  }
+  return 'unknown';
+}
+
+/** Check if a UWP app is installed by package family name. */
+async function checkUwpInstalled(pkgFamilyAppId) {
+  const pkgFamily = pkgFamilyAppId.split('!')[0];
+  try {
+    const out = await psExec(`Get-AppxPackage -Name '${pkgFamily.split('_')[0]}*' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty PackageFamilyName -First 1`);
+    return out.trim().length > 0;
+  } catch { return false; }
+}
+
+/**
+ * Find the first installed tool for a vendor.
+ * Returns { kind: 'exe'|'uwp', target: string } or null.
+ */
+async function findVendorTool(vendor) {
+  const tools = VENDOR_TOOLS[vendor] || [];
+  for (const t of tools) {
+    if (t.exe) {
+      try { await fs.promises.access(t.exe); return { kind: 'exe', target: t.exe }; } catch {}
+    } else if (t.uwp) {
+      if (await checkUwpInstalled(t.uwp)) return { kind: 'uwp', target: t.uwp };
+    }
+  }
+  return null;
+}
+
+ipcMain.handle('check-fps-cap', async (_event, { gameDir } = {}) => {
+  let dxvkApplied = false;
+  if (gameDir) {
+    try {
+      const { map } = await readDxvkConf(gameDir);
+      dxvkApplied = map.get(FPS_CAP_KEY) === FPS_CAP_VALUE;
+    } catch {}
+  }
+  const vendor = await detectGpuVendor();
+  const tool   = await findVendorTool(vendor);
+  return {
+    dxvkApplied,
+    vendor,
+    vendorToolAvailable: !!tool,
+    vendorToolKind:      tool?.kind || null,
+  };
+});
+
+ipcMain.handle('apply-fps-cap', async (_event, { gameDir, enable } = {}) => {
+  if (!gameDir) return { success: false, error: 'No game directory' };
+  try {
+    const { confPath, map } = await readDxvkConf(gameDir);
+    if (enable) {
+      map.set(FPS_CAP_KEY, FPS_CAP_VALUE);
+    } else {
+      map.delete(FPS_CAP_KEY);
+    }
+    const content = stringifyDxvkConf(map);
+    if (content) {
+      await fs.promises.writeFile(confPath, content, 'utf-8');
+    } else {
+      try { await fs.promises.unlink(confPath); } catch {}
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// ─────────────────────────────────────────────
+// IPC – DXVK Shader Cache info / cleanup
+//
+// DXVK writes a state cache file as `<exe_name>.dxvk-cache` next to the
+// game executable (default behavior; env DXVK_STATE_CACHE_PATH overrides).
+// Cache grows as new shader pipelines are compiled — first playthrough of
+// each area produces stutter; subsequent runs hit the cache and stutter
+// disappears. We expose:
+//   - read-only info (count, total size, newest mtime)
+//   - cleanup (delete all *.dxvk-cache files in the game directory)
+//
+// We do NOT touch the bundled DXVK distribution under <gameDir>/_dxvk-cache/
+// — that folder contains the extracted release (DLLs), not the runtime
+// shader cache.
+// ─────────────────────────────────────────────
+async function findDxvkCacheFiles(gameDir) {
+  const entries = await fs.promises.readdir(gameDir, { withFileTypes: true }).catch(() => []);
+  const results = [];
+  for (const e of entries) {
+    if (!e.isFile()) continue;
+    if (!/\.dxvk-cache$/i.test(e.name)) continue;
+    const full = path.join(gameDir, e.name);
+    try {
+      const st = await fs.promises.stat(full);
+      results.push({ name: e.name, path: full, size: st.size, mtime: st.mtime.toISOString() });
+    } catch {}
+  }
+  return results;
+}
+
+/** Sum up sizes & newest mtime of all files under a directory tree. */
+async function describeDirSize(dir) {
+  let totalSize = 0;
+  let fileCount = 0;
+  let newestMtime = null;
+  async function walk(d) {
+    let entries;
+    try { entries = await fs.promises.readdir(d, { withFileTypes: true }); }
+    catch { return; }
+    for (const e of entries) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) { await walk(p); }
+      else if (e.isFile()) {
+        try {
+          const st = await fs.promises.stat(p);
+          totalSize += st.size;
+          fileCount++;
+          const iso = st.mtime.toISOString();
+          if (!newestMtime || iso > newestMtime) newestMtime = iso;
+        } catch {}
+      }
+    }
+  }
+  await walk(dir);
+  return { totalSize, fileCount, newestMtime };
+}
+
+ipcMain.handle('dxvk-cache-info', async (_event, { gameDir } = {}) => {
+  // DXVK state cache (per-game file)
+  let dxvkFiles = [];
+  let dxvkTotal = 0;
+  let dxvkMtime = null;
+  if (gameDir) {
+    dxvkFiles = await findDxvkCacheFiles(gameDir);
+    dxvkTotal = dxvkFiles.reduce((a, f) => a + f.size, 0);
+    dxvkMtime = dxvkFiles.length
+      ? dxvkFiles.map(f => f.mtime).sort().reverse()[0]
+      : null;
+  }
+
+  // GPU-driver-level shader caches (shared across all games). We report
+  // these informationally so the user understands where shaders actually
+  // live on modern systems — NVIDIA DXCache is the real heavy lifter.
+  const driver = {
+    nvidiaDxCache: await describeDirSize(path.join(app.getPath('home'), 'AppData', 'Local', 'NVIDIA', 'DXCache')),
+    nvidiaGlCache: await describeDirSize(path.join(app.getPath('home'), 'AppData', 'Local', 'NVIDIA', 'GLCache')),
+    amdShaderCache: await describeDirSize(path.join(app.getPath('home'), 'AppData', 'Local', 'AMD', 'DxCache')),
+  };
+
+  return {
+    dxvk: {
+      files:       dxvkFiles,
+      totalSize:   dxvkTotal,
+      newestMtime: dxvkMtime,
+    },
+    driver,
+  };
+});
+
+// ─────────────────────────────────────────────
+// IPC – DPfix CaptureCursor toggle
+//
+// DPfix has an internal setting `CaptureCursor` (in Settings.def from
+// PeterTh/dpfix) that grabs the cursor at the D3D9 wrapper layer. It's
+// undocumented in the shipped DPfix.ini but the parser respects it.
+// Setting `CaptureCursor 1` is a cleaner cursor-hide path than our
+// PS AttachThreadInput watcher when DPfix is active (i.e. the user's
+// d3d9.dll is the DPfix proxy, possibly chained to DXVK via d9vk.dll).
+//
+// We don't roundtrip the whole INI through the parser — comment lines
+// matter (they're documentation). Instead we surgically:
+//   - Look for an existing CaptureCursor line (commented or not) → replace
+//   - If not present → append at end of file
+// Both forms ("CaptureCursor 0" / "CaptureCursor 1") are valid; absence
+// means default 0.
+// ─────────────────────────────────────────────
+const CAPTURE_CURSOR_RE = /^(\s*)(#\s*)?CaptureCursor\b.*$/im;
+
+async function readDpfixIni(gameDir) {
+  const iniPath = path.join(gameDir, 'DPfix.ini');
+  try {
+    const text = await fs.promises.readFile(iniPath, 'utf-8');
+    return { iniPath, text };
+  } catch {
+    return { iniPath, text: null };
+  }
+}
+
+ipcMain.handle('check-capture-cursor', async (_event, { gameDir } = {}) => {
+  if (!gameDir) return { iniExists: false, applied: false };
+  const { text } = await readDpfixIni(gameDir);
+  if (text === null) return { iniExists: false, applied: false };
+  // Find a non-commented CaptureCursor X line
+  const m = text.match(/^\s*CaptureCursor\s+(\d+)\s*$/im);
+  return {
+    iniExists: true,
+    applied:   !!m && m[1] === '1',
+    rawValue:  m ? m[1] : null,
+  };
+});
+
+ipcMain.handle('apply-capture-cursor', async (_event, { gameDir, enable } = {}) => {
+  if (!gameDir) return { success: false, error: 'No game directory' };
+  const { iniPath, text } = await readDpfixIni(gameDir);
+  if (text === null) {
+    return { success: false, error: 'DPfix.ini not found in game directory.' };
+  }
+  // Backup .ini once
+  const bakPath = iniPath + '.bak';
+  try { await fs.promises.access(bakPath); }
+  catch { await fs.promises.writeFile(bakPath, text, 'utf-8'); }
+
+  const newLine = `CaptureCursor ${enable ? 1 : 0}`;
+  let next;
+  if (CAPTURE_CURSOR_RE.test(text)) {
+    // Replace existing line (uncomments if was commented)
+    next = text.replace(CAPTURE_CURSOR_RE, newLine);
+  } else {
+    // Append at end with a marker comment so future runs can find it
+    const trailingNl = text.endsWith('\n') ? '' : '\n';
+    next = text + trailingNl +
+      '\n# Added by DP1 Launcher — capture cursor at the D3D9 wrapper level\n' +
+      newLine + '\n';
+  }
+  if (next === text) return { success: true, alreadyApplied: true };
+  await fs.promises.writeFile(iniPath, next, 'utf-8');
+  return { success: true };
+});
+
+ipcMain.handle('dxvk-cache-clean', async (_event, { gameDir } = {}) => {
+  if (!gameDir) return { success: false, error: 'No game directory' };
+  const files = await findDxvkCacheFiles(gameDir);
+  if (!files.length) return { success: true, deleted: 0 };
+  let deleted = 0;
+  const errors = [];
+  for (const f of files) {
+    try { await fs.promises.unlink(f.path); deleted++; }
+    catch (err) { errors.push(`${f.name}: ${err.message}`); }
+  }
+  return { success: errors.length === 0, deleted, errors };
+});
+
+ipcMain.handle('open-gpu-settings', async (_event, { vendor } = {}) => {
+  const tool = await findVendorTool(vendor);
+  if (!tool) {
+    return { success: false, error: `Control panel not found for vendor: ${vendor}` };
+  }
+  if (tool.kind === 'uwp') {
+    // Launch UWP app via shell:appsFolder. explorer.exe is the canonical way.
+    return new Promise((resolve) => {
+      require('child_process').execFile(
+        'explorer.exe',
+        [`shell:appsFolder\\${tool.target}`],
+        { windowsHide: false },
+        (err) => {
+          // explorer.exe returns non-zero even on success for shell URIs — treat any launch as ok.
+          resolve({ success: true });
+        }
+      );
+    });
+  }
+  // exe
+  return new Promise((resolve) => {
+    require('child_process').execFile(tool.target, [], { windowsHide: false }, (err) => {
+      if (err) resolve({ success: false, error: err.message });
+      else     resolve({ success: true });
+    });
+  });
+});
+
+// ─────────────────────────────────────────────
+// IPC – Codec Fix (session-scoped DirectShow merit lowering for LAV)
+//
+// K-Lite installs LAV Filters which register with higher DirectShow merit
+// than Microsoft's native WMV/VC-1 decoders. On Win11 + RTX 50-series,
+// LAV's WMV decoder path can crash DP.exe during cutscene playback.
+//
+// Instead of permanently lowering LAV merits (which would affect every
+// other DirectShow-using app on the system: MPC-HC, Potplayer, OBS…),
+// we spawn a detached PowerShell watcher that:
+//
+//   1. Backs up each LAV filter's FilterData (original merit) into both
+//      memory and a JSON file under %APPDATA%/DP1Launcher.
+//   2. Writes MERIT_DO_NOT_USE (0x00200000) into bytes 4..7 of FilterData
+//      → Microsoft codecs win the filter graph race during this session.
+//   3. Waits for DP.exe to start (up to 60 s) then waits for it to exit.
+//   4. Restores every FilterData byte-for-byte. Deletes the backup file.
+//
+// On next start, if the previous session crashed mid-game, the watcher
+// detects the lingering backup file and restores it first thing —
+// belt-and-suspenders against orphaned patches.
+//
+// HKLM writes require admin; caller should ensure the launcher was
+// elevated (electronAPI.relaunchAsAdmin) before invoking.
+// ─────────────────────────────────────────────
+const LAV_FILTER_CLSIDS = [
+  '{EE30215D-164F-4A92-A4EB-9D4C13390F9F}', // LAV Video
+  '{E8E73B6B-4CB3-44A4-BE99-4F7BCB96E491}', // LAV Audio
+  '{171252A0-8820-4AFE-9DF8-5C92B2D66B04}', // LAV Splitter
+  '{B98D13E7-55DB-4385-A33D-09FD1BA26339}', // LAV Splitter Source
+];
+const DSHOW_FILTERS_CATEGORY = '{083863F1-70DE-11D0-BD40-00A0C911CE86}';
+
+let codecWatcherProc = null;
+
+function codecWatcherScriptPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'dpc_codec_watcher.ps1')
+    : path.join(__dirname, 'assets', 'dpc_codec_watcher.ps1');
+}
+
+ipcMain.handle('check-codec-fix', async () => {
+  // Returns: { lavInstalled, sessionActive, present: [{ clsid, merit }] }
+  const script = LAV_FILTER_CLSIDS.map(clsid => `
+    $p = "HKLM:\\SOFTWARE\\Classes\\CLSID\\${DSHOW_FILTERS_CATEGORY}\\Instance\\${clsid}";
+    if (Test-Path $p) {
+      $d = (Get-ItemProperty -Path $p -Name 'FilterData' -ErrorAction SilentlyContinue).FilterData;
+      if ($d -and $d.Length -ge 8) {
+        $merit = [BitConverter]::ToUInt32($d, 4);
+        Write-Output "${clsid}:$merit";
+      }
+    }
+  `).join('');
+  try {
+    const out = await psExec(script);
+    const present = [];
+    out.split('\n').map(l => l.trim()).filter(Boolean).forEach(line => {
+      const [clsid, meritStr] = line.split(':');
+      present.push({ clsid, merit: parseInt(meritStr, 10) });
+    });
+    return {
+      lavInstalled:  present.length > 0,
+      sessionActive: !!(codecWatcherProc && !codecWatcherProc.killed),
+      present,
+    };
+  } catch (err) {
+    return { lavInstalled: false, sessionActive: false, error: err.message };
+  }
+});
+
+ipcMain.handle('start-codec-fix', async (_event, { processName = 'DP' } = {}) => {
+  if (codecWatcherProc && !codecWatcherProc.killed) {
+    return { success: true, alreadyRunning: true };
+  }
+  const scriptPath = codecWatcherScriptPath();
+  try { await fs.promises.access(scriptPath); }
+  catch { return { success: false, error: `Watcher script not found at ${scriptPath}` }; }
+
+  const backupFile = path.join(app.getPath('userData'), 'codec-session-backup.json');
+  const { spawn } = require('child_process');
+  codecWatcherProc = spawn('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden',
+    '-ExecutionPolicy', 'Bypass',
+    '-File', scriptPath,
+    '-ProcessName', processName,
+    '-BackupFile',  backupFile,
+  ], { detached: true, windowsHide: true, stdio: 'ignore' });
+  codecWatcherProc.unref();
+  codecWatcherProc.on('exit', () => { codecWatcherProc = null; });
+  return { success: true };
+});
+
+ipcMain.handle('stop-codec-fix', async () => {
+  if (codecWatcherProc && !codecWatcherProc.killed) {
+    // PS watcher's `finally` block restores originals on exit.
+    try { codecWatcherProc.kill(); } catch {}
+    codecWatcherProc = null;
+    return { success: true };
+  }
+  return { success: true, notRunning: true };
+});
+
+// ─────────────────────────────────────────────
+// IPC – Hide cursor while game is in foreground
+//
+// Spawns a detached PowerShell watcher that uses AttachThreadInput to
+// hide DP.exe's window cursor whenever DP.exe is the foreground window.
+// When the game exits, the watcher restores the cursor and dies.
+// ─────────────────────────────────────────────
+let cursorWatcherProc = null;
+
+ipcMain.handle('start-cursor-hide', async (_event, { processName = 'DP' } = {}) => {
+  if (cursorWatcherProc && !cursorWatcherProc.killed) {
+    return { success: true, alreadyRunning: true };
+  }
+  // PS1 must live outside asar so powershell.exe can read it. We ship it
+  // via electron-builder's extraResources / electron-packager's --extra-resource,
+  // so when packaged it sits flat in process.resourcesPath; in dev it's
+  // under assets/ next to the source.
+  const scriptPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'dpc_cursor_hide.ps1')
+    : path.join(__dirname, 'assets', 'dpc_cursor_hide.ps1');
+  try { await fs.promises.access(scriptPath); }
+  catch { return { success: false, error: `Watcher script not found at ${scriptPath}` }; }
+
+  const { spawn } = require('child_process');
+  cursorWatcherProc = spawn('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden',
+    '-ExecutionPolicy', 'Bypass',
+    '-File', scriptPath,
+    '-ProcessName', processName,
+  ], { detached: true, windowsHide: true, stdio: 'ignore' });
+  cursorWatcherProc.unref();
+  cursorWatcherProc.on('exit', () => { cursorWatcherProc = null; });
+  return { success: true };
+});
+
+ipcMain.handle('stop-cursor-hide', async () => {
+  if (cursorWatcherProc && !cursorWatcherProc.killed) {
+    try { cursorWatcherProc.kill(); } catch {}
+    cursorWatcherProc = null;
+    return { success: true };
+  }
+  return { success: true, notRunning: true };
+});
+
+// ─────────────────────────────────────────────
 // IPC – Toggle Steam Overlay for a specific Steam app
 //
 // Edits <SteamPath>/userdata/<UserID>/config/localconfig.vdf, locating the
@@ -1650,6 +2169,31 @@ ipcMain.handle('autosave-stop', () => {
   if (saveWorker) saveWorker.postMessage({ type: 'stop' });
 });
 
+/**
+ * Read a small set of known-meaningful bytes from a dp.sav file.
+ * Offsets and meanings come from community RE on Steam Discussions
+ * (Erroneous Syntax / Dengarde / Zeddikins, Oct 2013).
+ */
+async function readSaveMeta(savFile) {
+  let fh;
+  try {
+    fh = await fs.promises.open(savFile, 'r');
+    // Single tiny read covering both bytes of interest. 0x19C model byte
+    // and 0x5CA character byte are both inside the first 1.5 KB.
+    const buf = Buffer.alloc(0x600);
+    const { bytesRead } = await fh.read(buf, 0, 0x600, 0);
+    if (bytesRead < 0x5CB) return { character: null };
+    return {
+      character: buf[0x5CA],
+      modelByte: buf[0x19C],
+    };
+  } catch {
+    return { character: null };
+  } finally {
+    try { await fh?.close(); } catch {}
+  }
+}
+
 /** List all backup folders with metadata */
 ipcMain.handle('saves-list', async (_event, gameDir) => {
   const backupsDir = path.join(gameDir, 'savedata', 'backups');
@@ -1666,11 +2210,14 @@ ipcMain.handle('saves-list', async (_event, gameDir) => {
       const savFile = path.join(backupsDir, d.name, 'dp.sav');
       try {
         const stat = await fs.promises.stat(savFile);
+        const saveMeta = await readSaveMeta(savFile);
         entries.push({
           id:          d.name,
           date:        stat.mtime.toISOString(),
           size:        stat.size,
           description: meta[d.name] || '',
+          character:   saveMeta.character,
+          modelByte:   saveMeta.modelByte,
         });
       } catch { /* no dp.sav inside — skip */ }
     }

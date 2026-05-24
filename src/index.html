@@ -246,6 +246,15 @@
             </svg>
             <span data-i18n="settings.accessibility">Accessibility</span>
           </button>
+          <button class="settings-nav-btn" data-section="dxvk">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="13" rx="2"/>
+              <path d="M7 21h10M9 17v4M15 17v4"/>
+              <path d="M8 10l2 2 4-4"/>
+            </svg>
+            <span data-i18n="settings.dxvk">DXVK</span>
+          </button>
           <button class="settings-nav-btn" data-section="advanced">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -502,22 +511,90 @@
             </div>
             <p class="compat-note" id="compat-note"></p>
 
-            <h4 class="form-subhead" data-i18n="skipIntro.title">Skip Intro Videos</h4>
-            <p class="settings-help" data-i18n="skipIntro.help">
-              Патчить DeadlyPremonition.exe на одному байті (0x243333),
-              щоб гра пропускала стартові заставки. Створюємо .bak перед записом —
-              можна відключити будь-коли.
-            </p>
-            <div class="form-row">
-              <span class="form-label" data-i18n="skipIntro.label">Skip intro videos</span>
-              <label class="form-toggle">
-                <input type="checkbox" id="skip-intro-toggle">
-                <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
-                <span class="form-toggle-label" id="skip-intro-label" data-i18n="saves.off">Off</span>
-              </label>
-            </div>
-            <p class="compat-note" id="skip-intro-note"></p>
+            <h4 class="form-subhead" data-i18n="dpcFixes.title">DPC Fixes</h4>
 
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="skipIntro.label">Пропустити заставки</span>
+                <label class="form-toggle" onclick="event.stopPropagation()">
+                  <input type="checkbox" id="skip-intro-toggle">
+                  <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                  <span class="form-toggle-label" id="skip-intro-label" data-i18n="saves.off">Off</span>
+                </label>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n="skipIntro.help">Патчить байт 0x243333 у .exe щоб пропустити логотипи.</p>
+              <p class="compat-note" id="skip-intro-note"></p>
+            </details>
+
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="fpsCap.label">FPS-cap 60</span>
+                <span class="fix-item-badge" id="fps-cap-vendor-badge">—</span>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n="fpsCap.help">Гра ламається на FPS &gt; 60. Налаштуй ліміт у панелі GPU.</p>
+              <div class="fix-item-instructions" id="fps-cap-instructions"></div>
+              <div class="form-row fix-item-row">
+                <button class="btn-primary btn-compact" id="btn-open-gpu-settings" data-i18n="fpsCap.openGpu">Open GPU panel</button>
+              </div>
+              <p class="compat-note" id="fps-cap-note"></p>
+            </details>
+
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="codecFix.label">Native codec priority</span>
+                <label class="form-toggle" onclick="event.stopPropagation()">
+                  <input type="checkbox" id="codec-fix-toggle">
+                  <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                  <span class="form-toggle-label" id="codec-fix-label" data-i18n="saves.off">Off</span>
+                </label>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n="codecFix.help">Тимчасово знижує merit LAV-фільтрів під час гри. Auto-revert при виході.</p>
+              <p class="compat-note" id="codec-fix-note"></p>
+            </details>
+
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="cursorHide.label">Ховати курсор у грі</span>
+                <label class="form-toggle" onclick="event.stopPropagation()">
+                  <input type="checkbox" id="cursor-hide-toggle">
+                  <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                  <span class="form-toggle-label" id="cursor-hide-label" data-i18n="saves.off">Off</span>
+                </label>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n="cursorHide.help">Фоновий watcher ховає курсор поки гра у фокусі.</p>
+              <p class="compat-note" id="cursor-hide-note"></p>
+            </details>
+
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="captureCursor.label">DPfix: capture cursor</span>
+                <label class="form-toggle" onclick="event.stopPropagation()">
+                  <input type="checkbox" id="capture-cursor-toggle">
+                  <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                  <span class="form-toggle-label" id="capture-cursor-label" data-i18n="saves.off">Off</span>
+                </label>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n="captureCursor.help">Альтернатива до PS-watcher'а. Захоплює курсор у вікні гри через DPfix (D3D9-рівень).</p>
+              <p class="compat-note" id="capture-cursor-note"></p>
+            </details>
+
+          </section>
+
+          <!-- DXVK -->
+          <section class="settings-section" data-section="dxvk">
+            <h4 class="form-subhead" data-i18n="dxvkSection.title">Shader Cache</h4>
+            <p class="settings-help" data-i18n="dxvkCache.help">
+              DXVK 2.x на сучасних драйверах делегує кеш шейдерів драйверу
+              (NVIDIA DXCache / AMD DxCache). Stutter першого проходу — нормальна
+              JIT-компіляція; з кешем наступні рази плавно. Файл <code>dp.dxvk-cache</code>
+              у директорії гри не обов'язковий.
+            </p>
+            <div class="fix-item-info-grid" id="dxvk-cache-grid"></div>
+            <div class="form-row">
+              <button class="btn-secondary" id="btn-dxvk-cache-refresh" data-i18n="dxvkCache.refresh">Refresh</button>
+              <button class="btn-secondary" id="btn-dxvk-cache-clean" data-i18n="dxvkCache.clean" disabled>Clear cache</button>
+            </div>
+            <p class="compat-note" id="dxvk-cache-note"></p>
           </section>
 
           <!-- SAVES (formerly Advanced) -->
