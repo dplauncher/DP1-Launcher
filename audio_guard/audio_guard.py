@@ -113,6 +113,9 @@ if (!dp) {
     const crossedThresholds = new Set();
     let lastEnqAtSample = 0, lastFreAtSample = 0;
     let stallNotified = false, ratioDriftNotified = false;
+    // Track count history for real-leak detection (vs long-held BGM slot)
+    let stallBaselineCount = -1;
+    let stallBaselineEnq = 0, stallBaselineFre = 0;
 
     // ─── Hook 1: Enqueue ──────────────────────────────────────────────
     Interceptor.attach(enqueueTarget, {
@@ -397,27 +400,46 @@ if (!dp) {
         }
         if (ratioDriftNotified && rollingRatio <= 1.05) ratioDriftNotified = false;
 
-        // FREE_STALL: real-leak detection. A "stall" is only meaningful if:
-        //   (a) there are active unfreed slots (count > 0), OR
-        //   (b) there's a global imbalance (enq_total > fre_total)
-        // If count==0 AND enq==fre, the silence is just idle gameplay — NOT
-        // a leak. No alert.
-        const hasActiveSlots     = lastKnownCount > 0;
-        const hasGlobalImbalance = enqueueHits > freeHits;
+        // FREE_STALL: real-leak detection. We must distinguish:
+        //   (a) BGM/ambient holding 1 stable slot — normal multi-channel audio
+        //   (b) accumulating orphan slots — actual leak
+        //
+        // Strategy: take a baseline when count first goes >0, then warn only
+        // if either:
+        //   - count GROWS above baseline during stall (more slots accumulate)
+        //   - OR global imbalance (enq_total - fre_total) GROWS over time
+        //
+        // A constant count>0 with balanced enq/fre after baseline is the
+        // BGM pattern — silent.
+
+        if (lastKnownCount > 0 && stallBaselineCount < 0) {
+            // Establish baseline when count first becomes non-zero
+            stallBaselineCount = lastKnownCount;
+            stallBaselineEnq   = enqueueHits;
+            stallBaselineFre   = freeHits;
+        }
+        if (lastKnownCount === 0) {
+            // Pool fully drained — clear baseline + reset notification
+            stallBaselineCount = -1;
+            stallNotified = false;
+        }
+
+        // Real leak signature: count grew above baseline since stall started
+        const countGrew = stallBaselineCount >= 0 && lastKnownCount > stallBaselineCount;
+        const imbalanceGrew = stallBaselineCount >= 0 &&
+            (enqueueHits - freeHits) > (stallBaselineEnq - stallBaselineFre);
+
         if (!stallNotified && secsSinceFree >= FREE_STALL_SECONDS &&
-            (hasActiveSlots || hasGlobalImbalance)) {
+            (countGrew || imbalanceGrew)) {
             stallNotified = true;
             send({ kind: 'free_stall', secs_since_free: secsSinceFree,
                    window_enqueues: enqInWindow,
                    last_known_count: lastKnownCount,
+                   baseline_count: stallBaselineCount,
                    enq_total: enqueueHits, fre_total: freeHits,
-                   reason: hasActiveSlots
-                           ? 'active slots (count>0)'
-                           : 'global imbalance (enq>fre)' });
-        }
-        // Reset notification when conditions clear
-        if (stallNotified && !hasActiveSlots && !hasGlobalImbalance) {
-            stallNotified = false;
+                   reason: countGrew
+                           ? `count grew ${stallBaselineCount}→${lastKnownCount}`
+                           : 'imbalance growing (enq>>fre over time)' });
         }
 
         if (lastPoolAddr) {
@@ -438,7 +460,8 @@ if (!dp) {
                alloc: allocHits, push: pushHits,
                max_count: maxCountSeen,
                secs_since_free: secsSinceFree,
-               rolling_ratio: rollingRatio === Infinity ? 'inf' : rollingRatio.toFixed(2),
+               rolling_ratio: !isFinite(rollingRatio) ? 'inf' :
+                              (isNaN(rollingRatio) ? '-' : rollingRatio.toFixed(2)),
                threads: Array.from(seenThreads),
                n_callers: seenCallers.size,
                thresholds_crossed: Array.from(crossedThresholds) });
@@ -505,9 +528,10 @@ def on_message(msg, data):
         print(f"  ⚠ RATIO_DRIFT: window enq/fre = {p['rolling_ratio']} "
               f"({p['window_enq']}/{p['window_fre']}) total={p['total_enq']}/{p['total_fre']}")
     elif k == 'free_stall':
-        print(f"  ⚠ FREE_STALL: no Free for {p['secs_since_free']}s — REAL LEAK")
+        print(f"  ⚠ FREE_STALL: no Free for {p['secs_since_free']}s — REAL LEAK SIGNAL")
         print(f"           reason: {p['reason']}")
-        print(f"           count_now={p['last_known_count']} enq_total={p['enq_total']} fre_total={p['fre_total']}")
+        print(f"           baseline_count={p['baseline_count']} count_now={p['last_known_count']}")
+        print(f"           enq_total={p['enq_total']} fre_total={p['fre_total']}")
     elif k == 'saturation':
         print(f"  ⚠ SATURATION: Alloc#{p['n']} called when count_before={p['count_before']} >= 64")
     elif k == 'alloc_broken':
