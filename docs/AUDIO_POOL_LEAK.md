@@ -172,33 +172,84 @@ completed-game saves (Chapter 6+ community saves, end-game replays).
 
 We reverted the patch in v1.2.2 and disabled the toggle.
 
-## Real fix candidate — v1.3.0 plan (not implemented yet)
+## v1.3.0 attempt — also failed (architecturally unfixable)
 
-The correct fix checks `pool->count >= 64` **before** the lock+Pop
-sequence:
+We tried the pre-Pop count check as planned. Two-site patch:
 
-```asm
-At FUN_007039f0 entry:
-  CMP [ECX+4], 0x40       ; 4 bytes: count vs 64
-  JGE return_full          ; 2 bytes
-  (original prologue ...)
-return_full:
-  OR  EAX, 0xFFFFFFFF      ; 3 bytes: return -1
-  RET                       ; 1 byte
+1. **Caller patch** at file `0x300DD0`: redirect `CALL FUN_007039f0`
+   to a 15-byte cave we found at VA `0x00701A41` (only ~+113 bytes
+   from the call site).
+2. **Cave wrapper** at file `0x300E41`:
+   ```asm
+   CMP [ECX+4], 0x40       ; check pool->count
+   JGE return_full
+   JMP rel32 → FUN_007039f0 ; tail-call to original
+   return_full:
+   OR  EAX, 0xFFFFFFFF      ; return -1
+   RET
+   ```
+
+**Result: still infinite loading.** Trace:
+
+```c
+// caller (FUN_007019b0) — UNCHANGED, has no error path
+int idx = wrapper();                          // returns -1 when full
+void *item = pool->items[idx];                 // → pool[-1] → invalid pointer
+FUN_00702d80(item, sound_data);                // writes to invalid pointer
+                                                // → memory corruption
+                                                // → infinite loading
 ```
 
-Plus a 2-byte guard in the caller `FUN_007019b0`:
-```asm
-After CALL FUN_007039f0:
-  TEST EAX, EAX
-  JS  skip_enqueue          ; if EAX < 0, skip
-  (continue with normal flow)
-```
+The caller `FUN_007019b0` **does not check the return value** of
+Alloc. It assumes Alloc always succeeds. Any sentinel value
+(`-1`, `0`, `null`, garbage) breaks the next instruction
+`pool->items[idx]` because it's a raw memory access on the returned
+index.
 
-This requires ~16 bytes of new code, which exceeds the 11-byte CC
-padding cave after FUN_007039f0. Either we find another cave in
-`.text`, or we move some original instructions out to make room.
-Future RE session.
+## Why this is architecturally unfixable from binary alone
+
+A working fix needs *both*:
+
+1. Alloc reports failure (we can do this in a cave).
+2. Caller skips the rest of the function on failure (we cannot —
+   requires ~10 bytes of injection in the tightly-packed caller and
+   another ~10 bytes for the early-return cleanup, far exceeding any
+   available cave near `FUN_007019b0`).
+
+Other approaches we considered and rejected:
+
+| Approach | Bytes needed | Blocker |
+|---|---|---|
+| Force-Free slot 0, retry Alloc | 26+ | Race condition with audio worker thread mid-play |
+| Spin-wait until a slot frees | 8 | Caller holds outer mutex; audio worker may need it → deadlock |
+| Rewrite caller in place | 70+ | No caves > 15 bytes anywhere in .text |
+| 2-cave chained patch | 11 + 15 | Audio worker thread arch unknown; still race-prone |
+
+A proper fix requires either:
+- The game's source code, or
+- A deep RE of the audio worker thread (FUN that consumes the queue
+  and calls Free) to understand the sync primitives and design a
+  patch that won't deadlock or race.
+
+The first is impossible. The second is multi-week work.
+
+## What the launcher ships instead
+
+We accept the limitation and provide *soft* mitigations:
+
+1. **Session-time reminder** (v1.2.2): toast at 3 hours of `DP.exe`
+   uptime, suggests a graceful game restart. Restarting drains the
+   pool naturally without touching the binary.
+2. **FPS Cap 60** (v1.1.0 fix): eliminates the timing-related cutscene
+   crashes that *cause* the audio-pool leak in the first place. With
+   fewer cutscene crashes, the pool stays much further from 64.
+3. **Codec Fix** (LAV merit): reduces cutscene-specific crashes from
+   K-Lite/LAV decoder bugs, again slowing the leak rate.
+4. **Autosave Backup**: protects against state loss if an
+   audio-pool-exhaustion crash does eventually happen.
+
+Combined, these reduce the practical incidence of the bug from
+"chronic" to "very rare in normal play sessions".
 
 ## Credits & references
 
