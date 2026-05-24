@@ -595,6 +595,117 @@ no live reproduction justified the runtime overhead. The architecture is
 documented in `audio_guard/README.md` if a future community report
 demonstrates the crash class still exists on top of v1.3.0 mitigations.
 
+## Postscript IV — actual Windows Event Log crash signatures
+
+After all theoretical RE work, we found **real crash data in Windows
+Event Log** from the user's previous DP install (D: drive, before
+v1.3.0 launcher was used). This gives us empirical ground truth for
+what actually crashes on real hardware.
+
+### Crash timeline (2026-05-20, 22:30–22:33)
+
+```
+22:30:32  Faulting module: XAudio2_7.dll_unloaded
+          Exception:        0xC0000005 (ACCESS_VIOLATION)
+          Offset:           0x0003A5E0
+
+22:33:04  Faulting module: DP.exe (itself)
+          Exception:        0xC0000005
+          Offset:           0x002E1F47
+
+22:33:22  Faulting module: DP.exe (same offset — reproducible!)
+          Exception:        0xC0000005
+          Offset:           0x002E1F47
+```
+
+Plus an earlier hang (2026-05-18) where DP.exe stopped responding.
+
+### Analysis of DP.exe+0x2E1F47
+
+The crashing instruction at VA `0x006E1F47`:
+
+```asm
+MOV EAX, [0x01480984]   ; A1 84 09 48 01 — load global singleton ptr
+MOV ECX, [EAX]          ; 8B 08 — ← CRASH: deref of null/invalid ptr
+MOV EDX, [0x01480984]   ; (same global re-loaded)
+PUSH EDX
+MOV EAX, [ECX + 0x158]
+CALL [EAX + ?]          ; virtual method dispatch
+```
+
+The faulting function starts at `0x006E1DA6`. Crash is `+0x1A1` deep
+into the function. Pattern: dereference of a global singleton pointer
+stored at `.data:0x01480984`. The singleton was either uninitialised
+or had already been freed by another path.
+
+### What this is NOT
+- **Not** the `TPoolList<LOADREQUEST_ITEM, 64, 0>` overflow we
+  theorised — that's a different bug class.
+- **Not** the FPS-timing drift in `FUN_0041c270`.
+- **Not** the `audio_guard.py` skip-path (that's not even running in
+  the failing build).
+
+### What this IS
+
+The smoking gun reading: **XAudio2 DLL unloading mid-call followed by
+null-deref of a singleton that XAudio2 cleanup probably cleared.**
+The 2-minute gap between the XAudio2_7.dll_unloaded crash and the two
+identical DP.exe+0x2E1F47 crashes is consistent with:
+
+1. Cutscene or scene transition triggers XAudio2 cleanup race
+2. `XAudio2_7.dll` gets unloaded while DP.exe holds references
+3. Some destructor or cleanup path clears
+   `*(void**)0x01480984` (audio-related singleton) to NULL
+4. User restarts game
+5. Some early-init code path enters the same function
+6. Reads `[0x01480984]` → NULL
+7. `MOV ECX, [EAX]` → access violation
+8. Game crashes during init
+9. User restarts → same crash because same scripted code path
+
+This is a **bootstrap-order bug**, not a runtime exhaustion bug. The
+crash is in the FIRST place the global is dereferenced after a bad
+cleanup sequence.
+
+### Why v1.3.0 launcher fixes it (probably)
+
+The user's current install (F: drive, post-v1.3.0) has **zero crash
+events**. Things we changed that could plausibly avoid this signature:
+
+- **Codec fix** (session-scoped LAV merit lowering) — reduces the
+  DirectShow chain depth that interacts with XAudio2 during cutscenes
+- **FPS cap 60** — reduces timing-related code-path divergence; some
+  scripted scene transitions only break at uncapped FPS
+- **DXVK toggle / DPfix d3d9.dll chain** — different DLL load order
+  may avoid the XAudio2 unload race window
+- **Autosave backup + session timer** — keeps the user from spending
+  long periods inside crash-prone game states
+- **General environmental hygiene** the launcher enforces (4gb_patch,
+  DPI awareness, etc.)
+
+### Implication for future work
+
+Audio guard (`audio_guard/`) is still a **theoretically valid tool**
+for catching pool overflow IF it ever happens — but in practice the
+real crashes appear to be:
+
+1. **DLL lifetime races** (XAudio2 unload mid-use)
+2. **Singleton null-deref** after bad cleanup
+3. **State-machine bugs** (Chapter 9 art-gallery exit)
+
+None of these are pool-overflow class. A proxy DLL solution that
+targets `FUN_007019b0` would not catch these — they need either:
+
+- DLL-hook on `LoadLibrary`/`FreeLibrary` to track XAudio2 lifetime
+- Watchpoint on `0x01480984` to catch the NULL-write moment
+- Or a save-replacement workaround (community approach for Chapter 9)
+
+For now, the launcher mitigations are addressing the empirically-
+observed crash surface even though we didn't initially diagnose them
+as such. The match between v1.3.0 mitigation set and the actual crash
+signature is partly fortunate and partly converged via community
+knowledge encoded in our changelog.
+
 ## Tools we built (and what they're good for)
 
 | Tool | Purpose | Reusable? |
