@@ -1,5 +1,13 @@
 [
   {
+    "title_uk":   "🚀 v1.3.0 — Toggle DXVK on/off + повний RE-постмортем",
+    "title_en":   "🚀 v1.3.0 — DXVK on/off toggle + full RE postmortem",
+    "excerpt_uk": "A/B-тести на RTX 5070 + Steam Deck-гайд від community (r/SteamDeck) виявили: DPfix+DXVK chain додає 2-3× до часу завантаження на сучасних GPU через JIT-компіляцію Vulkan pipeline-ів драйвером. Винний саме wrapper-overhead, а не DXVK сам по собі. Додано toggle «Use DXVK» в DPC Fixes — вмикає/вимикає Vulkan-сурогат, DPfix-фікси (widescreen/FOV/4GB) лишаються активні в обох режимах. Bonus UX: кнопка «Зберегти зміни» тепер ховається на табах де налаштування автозберігаються. Опублікували повний пост-мортем усіх наших спроб у docs/RE_JOURNEY.md: що працювало, що ні, чому деякі баги архітектурно невиправні з бінарника, і які soft-mitigations замість патчів.",
+    "excerpt_en": "A/B testing on RTX 5070 + a community Steam Deck guide (r/SteamDeck) revealed that the DPfix+DXVK chain — not DXVK alone — adds 2-3× to load times on modern GPUs due to driver-level Vulkan pipeline JIT compile. Wrapper overhead is the real culprit. Added a «Use DXVK» toggle in DPC Fixes: enable/disable the Vulkan surrogate while DPfix hex patches (widescreen/FOV/4GB) stay active in both modes. UX bonus: the «Save Changes» button is now hidden on tabs where settings auto-save. Full postmortem of every fix attempt is now in docs/RE_JOURNEY.md: what worked, what didn't, why some bugs are architecturally unfixable from the binary, and which soft mitigations we ship instead.",
+    "date":       "May 25, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v1.3.0"
+  },
+  {
     "title_uk":   "🛠 v1.2.2 — Hotfix: прибрано broken audio-pool patch, додано session-timer reminder",
     "title_en":   "🛠 v1.2.2 — Hotfix: broken audio-pool patch removed, session-timer reminder added",
     "excerpt_uk": "Експериментальний hex-патч audio-pool (v1.2.0-v1.2.1) ламав save-loading у completed-game saves — `TPopList::Pop` повертав garbage non-null pointer а не чистий NULL, тому наш null-check не спрацьовував. Patch повністю прибрано з UI і коду. Натомість додали soft-reminder: launcher слідкує за uptime DP.exe, через 3 години показує toast з рекомендацією перезапустити гру (це звільняє audio pool без потреби патчити exe). Технічний розбір + план для v1.3.0 у docs/AUDIO_POOL_LEAK.md.",
