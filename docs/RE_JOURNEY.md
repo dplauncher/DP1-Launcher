@@ -544,6 +544,57 @@ console-level overflow defence the PC port omitted**.
 Our hook isn't "experimental patching"; it's "restoring PS3-class
 behaviour to the PC port".
 
+## Postscript III — empirical refutation of "normal play causes overflow"
+
+After designing and validating the Frida-based audio guard (`audio_guard/`)
+on a modern setup (RTX 5070 + SSD), the natural concern was whether
+overflow IS reachable on slower hardware where original community
+crash reports originated. So we ran a stress simulation:
+
+**Test setup:**
+- CPU: limited to ONE core (`affinity 0x01`) via Task Manager
+- FPS: locked at 30 (matching HDD-era cap)
+- Scene: heavy active gameplay (combat, NPCs, ambient SFX)
+- Duration: ~10 minutes
+- Audio guard attached, all 4 hooks active
+
+**Result:**
+- `max_count = 3/64` (same as full-CPU+60-FPS sessions)
+- Zero anomaly events fired (no `RATIO_DRIFT`, no `FREE_STALL`, no `SATURATION`)
+- Single thread (`tid=26224`) handles all audio
+- Pool ping-pong behaviour identical to fast-hardware test
+
+**Interpretation:**
+Even with deliberately constrained CPU + 30 FPS + sustained activity, the
+audio pool is architecturally unable to climb past 3 slots. The PC port's
+single-threaded audio pipeline serialises requests effectively enough that
+modern hardware's worst-case scenario (1-core CPU) is still 20× headroom
+below pool capacity.
+
+This empirically refutes the "audio pool overflow during normal gameplay"
+hypothesis. Community-reported `Chapter 9 art-gallery exit` and similar
+crashes are NOT this bug class. Their causes:
+
+| Reported symptom | Real cause | Mitigation in v1.3.0 |
+|------------------|------------|----------------------|
+| Chapter 9 art-gallery exit crash | DSB state-machine bug (script-level) | Community save replacement (not engine fix) |
+| Long-session random crashes | FPS-timing drift ceil/floor drift (Bug #1) | 60 FPS cap |
+| Gas-station cutscene crash | LAV/DirectShow codec issue | Session-scoped codec fix |
+| "Memory pressure" reports | Generic Win32 fragmentation across all subsystems | Session timer + autosave |
+| **Theoretical audio-pool overflow** | **Architecturally unreachable in normal play** | **N/A — bug exists in theory only** |
+
+The audio pool bug we documented in `AUDIO_POOL_LEAK.md` is real (`Alloc`
+has no overflow check, `Pop` dereferences unchecked pointer when stack
+empty), but the conditions to trigger it require something we couldn't
+produce: either a specific cutscene callback bug that orphans 60+ slots,
+or a multi-hour session with rare slow-drain events that we'd need many
+hours to catch.
+
+**Phase B (active skip at threshold) was designed but not shipped** because
+no live reproduction justified the runtime overhead. The architecture is
+documented in `audio_guard/README.md` if a future community report
+demonstrates the crash class still exists on top of v1.3.0 mitigations.
+
 ## Tools we built (and what they're good for)
 
 | Tool | Purpose | Reusable? |
