@@ -320,6 +320,93 @@ Both modes preserve DPfix hex patches in `DP.exe` (widescreen / FOV /
 4GB Patch always active). The toggle is admin-gated because writing to
 `SysWOW64` requires elevation.
 
+## Postscript — Xbox 360 vs PC comparison (May 25, 2026)
+
+After v1.3.0 shipped, we compared the PC version against the Xbox 360 release
+(`Deadly Premonition (Europe)`) to understand why the same content crashes on
+PC but supposedly doesn't on Xbox.
+
+### Same data, different runtime
+File-level comparison revealed:
+
+| Asset | Xbox 360 | PC |
+|-------|----------|-----|
+| Audio data | `sound/*.xsb` + `*.xwb` (XACT format) | **same `.xsb` + `.xwb` files** |
+| Cutscene video | `movie/*.wmv` | same `.wmv` files |
+| Game assets | `pack/*.pkg` (35 files, 3.5+ GB) | concatenated into `updata/_flink/DPSerial.001/002/003` (3 blob files, same content) |
+
+The PC port **did not convert the audio**. It ships the original XACT
+(Xbox Audio Cross-platform Technology) sound banks and wave banks intact.
+
+### Different runtime — the real story
+A PE imports scan of `DP.exe` (`compare_xbox_pc.py`) showed:
+
+```
+KERNEL32.dll, USER32.dll, steam_api.dll, d3d9.dll, d3dx9_43.dll,
+WINMM.dll, PhysXLoader.dll, NxCharacter.dll, NxCooking.dll,
+X3DAudio1_7.dll, ADVAPI32.dll, SHELL32.dll, ole32.dll
+
+Audio-related:
+  X3DAudio1_7.dll:
+    X3DAudioCalculate
+    X3DAudioInitialize
+```
+
+**`DP.exe` does not import `xactengine*.dll`.** Only `X3DAudio` (the 3D
+positioning math library) and nothing else from Microsoft's XACT family.
+Windows ships `xactengine2_0.dll` through `xactengine3_7.dll` in
+`C:\Windows\SysWOW64\` — none of them are called by DP.exe.
+
+### Conclusion
+Access Games / ToyBox (the PC port developers) **wrote their own XACT-
+compatible loader from scratch** instead of using Microsoft's existing
+`xactengine*.dll` runtime. The pool we documented in
+[`AUDIO_POOL_LEAK.md`](AUDIO_POOL_LEAK.md) — `TPoolList<LOADREQUEST_ITEM, 64, 0>`
+— is that custom loader's allocator. Its size matches XACT's known
+internal limit (64 simultaneous sound load requests), but it lacks the
+overflow check that production XACT has.
+
+```
+Xbox 360:   .xsb/.xwb → native XACT runtime (Microsoft, hardware-assisted)
+                          ↓
+                          Production-quality, bounded, defensive
+                          → does not crash under load
+
+PC port:    .xsb/.xwb → custom Access Games / ToyBox loader
+                          ↓
+                          From-scratch minimal reimplementation,
+                          fixed 64-slot pool, NO overflow check
+                          → crashes under load (Bug #2)
+```
+
+### Why does this matter?
+This isn't a community-folklore "memory leak". It's a deliberate engineering
+decision by the PC porting team to ship their own audio loader instead of
+using the established Microsoft library that already ships on every Windows
+machine (`%SystemRoot%\SysWOW64\xactengine2_0.dll` and friends, deployed
+by `DXSETUP.exe` which the game itself bundles in `redist/`).
+
+The audio bug class is **architecturally Windows-port-specific**. The same
+game code with the same audio assets does not crash on Xbox 360 because
+Xbox's XACT runtime is a different — more defensive, hardware-assisted —
+implementation. Reverse-engineering the engine code in DP.exe to find the
+defect was correct; the open question was always "why does this code path
+exist", and the answer is "because someone re-implemented XACT instead of
+using the shipped one".
+
+### Hypothetical fix path (not pursued)
+A clean fix would write a wrapper DLL that intercepts calls into the
+custom loader (`FUN_007039f0` / `FUN_007019b0` from our RE) and redirects
+them into Microsoft's `xactengine2_10.dll`. That would:
+
+1. Inherit Microsoft's production overflow-handling.
+2. Side-step Bug #2 entirely without touching DP.exe's `.text`.
+
+Estimated effort: multi-week, with significant unknowns (the custom
+loader's ABI was never documented). For now we keep the soft mitigations
+shipped in v1.2.2 (session timer + autosave). Documented here for future
+work.
+
 ## Tools we built (and what they're good for)
 
 | Tool | Purpose | Reusable? |
@@ -332,6 +419,7 @@ Both modes preserve DPfix hex patches in `DP.exe` (widescreen / FOV /
 | `find_event_strings.py` | Locate ASCII strings + scan for VA references | Generic PE32 |
 | `dump_event_region.py` | Hex dump + pointer-lands-in-range scan | Generic PE32 |
 | `find_debug_info.py` | Extract PDB path, source paths, RTTI names | Generic PE32 |
+| `compare_xbox_pc.py` | List PE imports of DP.exe (used in Xbox vs PC investigation) | Generic PE32 |
 
 All are kept in the game directory as one-shot Python scripts. None
 require Ghidra; they parse PE structures and minidump format directly.

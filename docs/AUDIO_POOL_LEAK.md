@@ -251,6 +251,47 @@ We accept the limitation and provide *soft* mitigations:
 Combined, these reduce the practical incidence of the bug from
 "chronic" to "very rare in normal play sessions".
 
+## Postscript — Xbox 360 vs PC root cause (May 25, 2026)
+
+After all the binary-patch attempts failed, we obtained the Xbox 360 release
+of DP and compared. Findings:
+
+1. **Audio data is identical.** Both versions ship the same XACT
+   sound banks (`sound/*.xsb` + `*.xwb`). The PC port did not convert
+   the audio, just kept Xbox-format files.
+
+2. **Audio runtime is completely different.** `DP.exe`'s PE imports
+   table contains **no `xactengine*.dll`**. Access Games wrote their
+   own XACT loader from scratch for the PC port, instead of using
+   Microsoft's `xactengine2_0.dll`/`xactengine3_7.dll` that ship with
+   Windows (and that `redist/DXSETUP.exe` would have installed).
+
+3. **The `TPoolList<LOADREQUEST_ITEM, 64, 0>` is the custom loader's
+   pool.** The size of 64 matches XACT's documented internal limit
+   for simultaneous load requests. But the custom loader is a
+   minimal reimplementation: same numeric limit, **no overflow
+   handling**. Production Microsoft XACT has it; this clone doesn't.
+
+This explains:
+
+- Why the bug class exists on PC and not Xbox: different runtime,
+  not different content.
+- Why binary patches to `FUN_007039f0` / `FUN_007019b0` keep breaking
+  things: those functions are part of a hand-rolled audio loader with
+  unknown invariants; we can't safely inject error paths without
+  understanding the audio worker thread that's supposed to call `Free`.
+- Why "smoke a cigarette" works as a community workaround for
+  Chapter 9 crashes: it skips game time past the script transition
+  that loaded the offending sound — a state-machine bug downstream
+  of an unreliable loader.
+
+A theoretically clean fix would write a proxy DLL that intercepts the
+custom loader's entry points and dispatches into Microsoft's
+`xactengine2_10.dll` instead. Estimated effort: multi-week, ABI unknown.
+Not pursued.
+
+Full context in [`RE_JOURNEY.md`](RE_JOURNEY.md) postscript section.
+
 ## Credits & references
 
 - Steam community forum reports (Chapter 8/9 crash pattern, "smoking
