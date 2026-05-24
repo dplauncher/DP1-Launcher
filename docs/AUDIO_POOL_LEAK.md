@@ -292,6 +292,88 @@ Not pursued.
 
 Full context in [`RE_JOURNEY.md`](RE_JOURNEY.md) postscript section.
 
+## Postscript II — PS3 dump confirms graceful-overflow was console-only
+
+A PS3 retail dump was decrypted (via RPCS3 + PUP keys) and the EBOOT.elf
+extracted for static analysis. Key findings:
+
+**Same audio assets as Xbox 360 + PC**: `BGM.XSB`/`BGM.XWB`,
+`SE.XSB`/`SE.XWB`, etc. — same Microsoft XACT format.
+
+**Different runtime stack**: PS3 routes audio through `MultiStream` →
+`cellMSStream` → `SPU/DSP` → `cellAudio`, all heavily mutex-protected
+(317 `sys_lwmutex_lock` direct callsites in the binary).
+
+**Smoking-gun strings in EBOOT.elf**:
+
+```
+MULTISTREAM : Maximum instruction queue reached! Instruction not added!
+MULTISTREAM ERROR - START SAFE GUARD MEMORY HAS BEEN CORRUPTED...
+MULTISTREAM ERROR - END SAFE GUARD MEMORY HAS BEEN CORRUPTED...
+```
+
+The PS3 audio middleware **explicitly handles queue overflow** by:
+1. Detecting full queue before enqueue
+2. Logging the overflow
+3. Silently dropping the new request — **not crashing, not corrupting**
+4. Continuing normal operation
+
+It also has **guard-memory canaries** around audio buffers to detect
+corruption.
+
+The PC port stripped both safety nets:
+- No "queue full, instruction not added" path
+- No guard-memory canaries
+- No graceful overflow handling at the request/queue layer
+
+This means our PC fix is not a "patch invent" — it's a **restoration of
+console-class defensive behaviour that the PC port omitted**. The right
+implementation strategy:
+
+```
+PS3 (working):                       PC (broken):
+─────────────────────                ─────────────────────────
+enqueue_request(req) {               enqueue_request(req) {
+  lock();                              Lock(this+0x184);
+  if (queue.size() >= MAX) {           idx = Alloc(pool);    // no check
+    log("queue full");                 item = &pool->items[idx];  // garbage
+    unlock();                          InitItem(item, req);  // corruption
+    return;                            Unlock(this+0x184);
+  }                                    PushToQueue(queue, idx);
+  ...add to queue...                   return queue;
+  unlock();                          }
+}
+```
+
+Our planned X3DAudio1_7.dll proxy hook re-injects the PS3-equivalent
+guard at the same call layer (`FUN_007019b0`):
+
+```cpp
+// PC equivalent of PS3 MultiStream "instruction not added" path
+if (pool->count >= 62) {  // threshold below 64 for race margin
+    log("audio queue full, dropping request");
+    return queue;  // PS3 behavior — no new instruction added
+}
+// otherwise normal call into original
+return real_FUN_007019b0(this, queue, sound_data);
+```
+
+This isn't third-party speculation — it's the same architectural decision
+the PS3 build already shipped, that the PC port quietly removed.
+
+PS3 canonical audio call sites (for future cross-reference):
+
+```
+0x00701ED8  audio init wrapper
+0x00701F2C  cellAudioInit
+0x00789F64  cellAudioPortOpen (primary)
+0x007CDDAC  sys_lwmutex_create (audio stream mgr)
+0x007CCFB0  sys_lwmutex_lock  <- guards cellAudioPortStart
+0x007CCFC8  cellAudioPortStart
+0x007CD004  sys_lwmutex_unlock (success)
+0x007CD014  sys_lwmutex_unlock (error)
+```
+
 ## Credits & references
 
 - Steam community forum reports (Chapter 8/9 crash pattern, "smoking

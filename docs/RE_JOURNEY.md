@@ -407,6 +407,143 @@ loader's ABI was never documented). For now we keep the soft mitigations
 shipped in v1.2.2 (session timer + autosave). Documented here for future
 work.
 
+## Postscript II — PS3 confirms the diagnosis (May 25, 2026)
+
+After the Xbox 360 comparison narrowed the bug to "PC-port-specific custom
+audio loader", a PS3 retail dump landed in our lap. The PS3 EBOOT.BIN was
+extracted, decrypted via RPCS3 (PS3UPDAT.PUP was on the disc),
+and analysed statically. The result is the strongest evidence we have so
+far that the audio bug class was a **regression introduced during the PC
+port**, not an engine-level defect.
+
+### Same content, different runtime, again
+PS3 ships the **exact same XACT sound banks** as Xbox 360 and PC:
+
+```
+USRDIR/UPDATA/SOUND/
+  BGM.XSB / BGM.XWB         ← XSB2 magic identical to PC's .xsb
+  SE.XSB / SE.XWB
+  BOSE.XSB / BOSE.XWB
+  PLVO.XSB / PLVO.XWB
+  ... (24 sound banks, all Microsoft XACT format)
+```
+
+This is unusual — XACT is Microsoft middleware. The PS3 port shipped
+Microsoft-format audio assets and built a custom XACT-compatible parser
+on top of Sony APIs. Same pattern the PC port follows; same XSB2 banks
+in both binaries.
+
+### PS3 audio architecture (extracted from EBOOT.elf strings + xrefs)
+```
+XSB/XWB assets                               (game-side audio data)
+    -> game audio layer                      (custom XACT cue dispatch)
+    -> MultiStream / cellMSStream / DSP      (Sony middleware queue)
+    -> cellAudio port                        (kernel audio buffer)
+    -> PS3 audio output                      (hardware mixer)
+```
+
+Synchronisation: heavy use of `sys_lwmutex_lock`/`sys_lwmutex_unlock`
+(317 / 441 direct `bl` callsites) plus `sys_mutex_lock`/`sys_mutex_unlock`
+(26 / 29 callsites) plus `sys_cond_*` for worker-thread coordination.
+PS3 audio path is **thoroughly mutex-protected**.
+
+### Smoking-gun strings inside EBOOT.elf
+The PS3 binary contains these diagnostic strings, used by the
+MultiStream middleware:
+
+```c
+MULTISTREAM: sys_lwmutex_create() failed %d
+WARNING : Multistream lagging by %d packets to libAudio
+MULTISTREAM : Maximum instruction queue reached! Instruction not added!
+MULTISTREAM : Stream %d missed a callback. cellMSSystemGenerateCallbacks
+              needs to be called more often
+MULTISTREAM ERROR - START SAFE GUARD MEMORY HAS BEEN CORRUPTED...
+MULTISTREAM ERROR - END SAFE GUARD MEMORY HAS BEEN CORRUPTED...
+```
+
+The third one — **`"Maximum instruction queue reached! Instruction not
+added!"`** — is the exact defensive behaviour our PC port lacks. On
+PS3, when the audio request queue fills up:
+
+1. Caller invokes "enqueue request"
+2. Queue overflow detected (queue size >= MAX)
+3. Diagnostic is logged
+4. The instruction is **silently dropped, not added**
+5. Caller proceeds normally; the only effect is one sound doesn't play
+6. The system stays consistent
+
+That is **exactly the safety net we hypothesised was missing on PC**.
+And the last two strings (`SAFE GUARD MEMORY HAS BEEN CORRUPTED`) prove
+that the PS3 build even had **canary-style buffer overrun detection**
+around audio buffers — a level of defensive engineering that the PC port
+also stripped.
+
+### Canonical PS3 audio call sites (for future RE)
+Extracted from EBOOT.elf static analysis:
+
+| VA | Purpose |
+|----|---------|
+| `0x00701ED8` | audio system init wrapper before `cellAudioInit` |
+| `0x00701F2C` | `cellAudioInit` |
+| `0x00701E0C` | `cellAudioQuit` |
+| `0x00789F64` | `cellAudioPortOpen` (path 1, primary port) |
+| `0x007CDDAC` | `sys_lwmutex_create` (audio stream manager init) |
+| `0x007CDDE4` | `cellAudioPortOpen` (path 2, stream manager port) |
+| `0x007CDE10` | `cellAudioGetPortConfig` |
+| `0x007CCFB0` | `sys_lwmutex_lock`  ← guards `cellAudioPortStart` |
+| `0x007CCFC8` | `cellAudioPortStart` |
+| `0x007CD004` | `sys_lwmutex_unlock` (success path) |
+| `0x007CD014` | `sys_lwmutex_unlock` (error path) |
+
+The `0x007CCFB0` block is almost a textbook example of how PS3 protects
+critical audio-state mutations: lock → operate → unlock-on-success +
+unlock-on-error. PC port: no equivalent guard.
+
+### Important correction to the audio model
+After more careful PS3 analysis (via GPT-assisted cross-reference of
+NID tables + import addresses + diagnostic strings), our earlier
+phrasing was overconfident. We do **not** have proof that the PS3 build
+uses the exact same `TPoolList<LOADREQUEST_ITEM, 64, 0>` template
+instance. What we **do** have proof of:
+
+- PS3 ships the same `.xsb`/`.xwb` assets
+- PS3 has a `MultiStream` instruction queue with documented overflow handling
+- PS3 audio loader uses `sys_lwmutex` for thread safety
+- PS3 has an explicit "queue full → don't add, log warning" path
+
+PC port likely:
+- Started from the same custom XACT parser code
+- Replaced the `MultiStream`/`SPU`/`cellAudio` Sony stack with a Windows
+  backend (X3DAudio + DirectSound or similar in-process audio mixer)
+- Simplified the queue management into the fixed-size `TPoolList<...,64,0>`
+- **Removed the overflow handler** (treated it as "console-specific debug
+  code, won't apply to PC")
+- Removed the guard-memory canaries (same reasoning)
+- Shipped without QA on long-session edge cases
+
+### Fix strategy this confirms
+The PC fix should **not** attempt to "make Alloc return errors", because
+PS3 doesn't fix overflow at the Alloc level either — PS3 fixes it at the
+**queue/request layer** (the caller). The correct logical fix is:
+
+```c
+// PC fix — equivalent to PS3's MultiStream overflow handler
+if (audio_request_queue_is_near_full) {
+    // PS3-equivalent behaviour: silently drop, log
+    log("audio request queue full, instruction not added");
+    return queue;  // unchanged — no new request added
+}
+// otherwise normal Alloc + enqueue path
+```
+
+This is structurally what our planned X3DAudio1_7.dll proxy hook on
+`FUN_007019b0` does: check pool pressure before Alloc, return queue
+unchanged when near-full. Not "fix the broken Alloc" — **restore the
+console-level overflow defence the PC port omitted**.
+
+Our hook isn't "experimental patching"; it's "restoring PS3-class
+behaviour to the PC port".
+
 ## Tools we built (and what they're good for)
 
 | Tool | Purpose | Reusable? |
@@ -420,6 +557,8 @@ work.
 | `dump_event_region.py` | Hex dump + pointer-lands-in-range scan | Generic PE32 |
 | `find_debug_info.py` | Extract PDB path, source paths, RTTI names | Generic PE32 |
 | `compare_xbox_pc.py` | List PE imports of DP.exe (used in Xbox vs PC investigation) | Generic PE32 |
+| `extract_ps3_elf.py` | Strip SCE wrapper from PS3 EBOOT.BIN (works only on already-decrypted SELF) | PS3 SELF |
+| `inspect_ps3_elf.py` | Quick ELF sanity check + section/symbol summary + audio API string anchors | PS3 PowerPC64 ELF |
 
 All are kept in the game directory as one-shot Python scripts. None
 require Ghidra; they parse PE structures and minidump format directly.
