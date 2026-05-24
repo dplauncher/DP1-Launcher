@@ -1133,6 +1133,14 @@ html, body {
   height: auto;
   min-height: 26px;
 }
+.fix-item.experimental {
+  background: linear-gradient(to right, rgba(255,180,40,0.04), transparent);
+  border-left: 2px solid rgba(255,180,40,0.4);
+  padding-left: 8px;
+}
+.fix-item.experimental > summary .fix-item-title {
+  color: rgba(255,200,80,0.95);
+}
 
 .fix-item-badge {
   font-size: 11px;

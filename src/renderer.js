@@ -320,6 +320,7 @@ function activateSettingsSection(name) {
     refreshCodecFixStatus();
     refreshCursorHideStatus();
     refreshCaptureCursorStatus();
+    refreshAudioPoolStatus();
   }
   if (name === 'graphics')      refreshDxvkRevertStatus();
   if (name === 'dxvk')          refreshDxvkCacheStatus();
@@ -687,6 +688,7 @@ async function setupCompatBlock() {
   $('btn-dxvk-cache-refresh')?.addEventListener('click', refreshDxvkCacheStatus);
   $('btn-dxvk-cache-clean')?.addEventListener('click',   onDxvkCacheClean);
   $('capture-cursor-toggle')?.addEventListener('change', onCaptureCursorToggle);
+  $('audio-pool-toggle')?.addEventListener('change',     onAudioPoolToggle);
 }
 
 async function refreshSkipIntroStatus() {
@@ -1094,6 +1096,94 @@ async function onCaptureCursorToggle(e) {
   } catch (err) {
     if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
     showToast(t('toast.captureCursorErr') + err.message, 'error');
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+// ═════════════════════════════════════════════
+// Audio Pool Safety Patch (EXPERIMENTAL)
+// Hex-patches FUN_007039f0 (audio Alloc) to null-check the Pop result.
+// On pool overflow, returns 0 (reuses slot 0) instead of dereferencing
+// null. Two-site patch: 2 bytes at +0x12, 8 bytes in the CC padding cave.
+// ═════════════════════════════════════════════
+async function refreshAudioPoolStatus() {
+  const toggle = $('audio-pool-toggle');
+  const label  = $('audio-pool-label');
+  const note   = $('audio-pool-note');
+  if (!toggle) return;
+
+  if (!state.gamePath) {
+    toggle.checked  = false;
+    toggle.disabled = true;
+    if (label) label.textContent = t('saves.off');
+    if (note)  { note.textContent = t('skipIntro.noExe'); note.className = 'compat-note'; }
+    return;
+  }
+
+  toggle.disabled = false;
+  try {
+    const r = await window.electronAPI.checkAudioPoolFix?.(state.gamePath);
+    if (r?.supported) {
+      toggle.checked = !!r.applied;
+      if (label) label.textContent = r.applied ? t('saves.on') : t('saves.off');
+      if (note)  { note.textContent = ''; note.className = 'compat-note'; }
+    } else {
+      toggle.checked  = false;
+      toggle.disabled = true;
+      if (label) label.textContent = t('saves.off');
+      const dump = r?.bytes ? ` (${r.bytes.join(' / ')})` : '';
+      if (note)  { note.textContent = (t('audioPool.unsupported') || 'Unsupported exe build') + dump; note.className = 'compat-note error'; }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onAudioPoolToggle(e) {
+  const toggle = e.target;
+  const enable = toggle.checked;
+  toggle.checked = !enable;
+
+  if (!state.gamePath) {
+    showToast(t('skipIntro.noExe'), 'warn');
+    return;
+  }
+
+  const ok = await openConfirm({
+    title:      t('audioPool.confirmTitle'),
+    body:       enable ? t('audioPool.confirmBody') : t('audioPool.revertBody'),
+    okText:     enable ? t('audioPool.confirmOk')   : t('audioPool.revertOk'),
+    cancelText: t('skipIntro.confirmCancel'),
+    danger:     true,
+  });
+  if (!ok) return;
+
+  const note  = $('audio-pool-note');
+  const label = $('audio-pool-label');
+  toggle.disabled = true;
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+
+  try {
+    const r = await window.electronAPI.applyAudioPoolFix?.(state.gamePath, enable);
+    if (r?.success) {
+      toggle.checked = enable;
+      if (label) label.textContent = enable ? t('saves.on') : t('saves.off');
+      if (note)  {
+        note.textContent = enable ? t('audioPool.activeHint') : '';
+        note.className   = 'compat-note';
+      }
+      showToast(enable ? t('toast.audioPoolOn') : t('toast.audioPoolOff'), 'success');
+      logActivity(enable ? 'completed' : 'info',
+                  enable ? 'Audio Pool safety patch applied (2-site hex, FUN_007039f0)'
+                         : 'Audio Pool safety patch reverted');
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+      showToast(t('toast.audioPoolErr') + (r?.error || ''), 'error');
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+    showToast(t('toast.audioPoolErr') + err.message, 'error');
   } finally {
     toggle.disabled = false;
   }

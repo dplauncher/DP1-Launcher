@@ -1,5 +1,13 @@
 [
   {
+    "title_uk":   "🧪 v1.2.0 — Audio Pool Safety Patch (експеримент) + RE звіт",
+    "title_en":   "🧪 v1.2.0 — Audio Pool Safety Patch (experimental) + RE writeup",
+    "excerpt_uk": "Через reverse engineering знайшли ще один корінь крашів DPC: пул audio-load-requests на 64 слоти без overflow-check. Коли катсцена крашиться → audio-thread не звільняє slot → leak → через кілька годин пул переповнюється → null deref CTD. Це і є друга причина long-session крашів (окрім FPS-timing bug). У новій версії додали ⚠ EXPERIMENTAL hex-патч (10 байтів у DP.exe) який додає null-check у Alloc. Замість крашу — повторне використання slot 0. Reversible через тоггл. Детальний розбір: docs/AUDIO_POOL_LEAK.md.",
+    "excerpt_en": "Reverse-engineered another DPC crash root cause: the audio load-request pool has 64 slots with no overflow check. When a cutscene crashes, the audio worker thread never frees the slot — leak. After hours of play, the pool fills up → next sound triggers null-deref CTD. This is the second pillar of long-session crashes (alongside the FPS-timing bug). New ⚠ EXPERIMENTAL hex patch (10 bytes in DP.exe) adds a null-check to Alloc — instead of crashing, the pool re-uses slot 0. Fully reversible via toggle. Detailed write-up: docs/AUDIO_POOL_LEAK.md.",
+    "date":       "May 24, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v1.2.0"
+  },
+  {
     "title_uk":   "🔬 v1.1.0 — Розгадали 10-річну загадку «куріння лікує краші»",
     "title_en":   "🔬 v1.1.0 — Decade-old smoking-workaround mystery solved",
     "excerpt_uk": "Через reverse engineering DP.exe знайдено корінь крашів у Chapter 9 diner, Chapter 8 gas station та інших: ceil()-формула delta-time у головному циклі дрейфує на FPS > 60, що ламає скриптові катсцени. Спільнота 10+ років обходила це курінням у грі — тепер можна просто лочити 60 FPS. Новий розділ DPC Fixes: FPS-cap з автодетектом GPU (NVIDIA/AMD/Intel), session-scoped codec-fix для катсценних крашів, persistent cursor-hide, DPfix CaptureCursor. Нова вкладка DXVK з cache-info. Saves redesign з визначенням персонажа. Повний технічний розбір — docs/FPS_TIMING_BUG.md.",

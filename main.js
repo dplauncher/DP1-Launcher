@@ -1347,6 +1347,116 @@ ipcMain.handle('apply-fps-cap', async (_event, { gameDir, enable } = {}) => {
 });
 
 // ─────────────────────────────────────────────
+// IPC – Audio Pool Safety Patch (EXPERIMENTAL)
+//
+// Reverse-engineered fix for the audio-pool overflow bug documented in
+// docs/AUDIO_POOL_LEAK.md.
+//
+// Original bug: FUN_007039f0 (Alloc) calls FUN_007040e0 (TPopList::Pop)
+// and dereferences the result without checking for null. When the pool's
+// 64 slots are exhausted, Pop returns null/garbage, the dereference
+// crashes the game or corrupts heap memory.
+//
+// Patch strategy (2 sites, ~10 bytes total, fits in existing CC padding):
+//
+//   1. At file 0x302E02 (FUN_007039f0 + 0x12):
+//        Original: 8B 00          ; MOV EAX, [EAX]   (the null deref)
+//        Patched:  EB 41          ; JMP +0x41 to cave
+//
+//   2. At file 0x302E45 (CC padding after Alloc, 11 bytes available):
+//        Original: CC CC CC CC CC CC CC CC
+//        Patched:  85 C0 74 02 8B 00 EB B7
+//          TEST EAX, EAX     ; null-check Pop result
+//          JZ   +2           ; skip MOV if null
+//          MOV  EAX, [EAX]   ; original deref
+//          JMP  -0x49        ; back to FUN_007039f0 + 0x14
+//
+// Behavior on overflow: instead of CTD, Alloc returns 0 (slot index 0),
+// gracefully reusing slot 0 with the new audio request. May briefly
+// truncate an existing sound on slot 0; no game crash.
+//
+// Reversible — .bak created on first apply, full revert via toggle off.
+// Refuses to apply if exe bytes don't match known DP:DC v1.01b build.
+// ─────────────────────────────────────────────
+const AUDIO_POOL_PATCHES = [
+  {
+    offset:   0x302E02,
+    original: Buffer.from([0x8B, 0x00]),
+    patched:  Buffer.from([0xEB, 0x41]),
+    desc:     'Alloc deref → JMP to safety cave',
+  },
+  {
+    offset:   0x302E45,
+    original: Buffer.from([0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC]),
+    patched:  Buffer.from([0x85, 0xC0, 0x74, 0x02, 0x8B, 0x00, 0xEB, 0xB7]),
+    desc:     'Cave: TEST EAX / JZ / MOV / JMP back',
+  },
+];
+
+async function readAudioPoolBlocks(exePath) {
+  let fh;
+  try {
+    fh = await fs.promises.open(exePath, 'r');
+    const blocks = [];
+    for (const p of AUDIO_POOL_PATCHES) {
+      const buf = Buffer.alloc(p.original.length);
+      await fh.read(buf, 0, p.original.length, p.offset);
+      blocks.push(buf);
+    }
+    return blocks;
+  } finally {
+    try { await fh?.close(); } catch {}
+  }
+}
+
+ipcMain.handle('check-audio-pool-fix', async (_event, { exePath } = {}) => {
+  if (!exePath) return { supported: false, applied: false };
+  try {
+    const blocks = await readAudioPoolBlocks(exePath);
+    const allOrig    = blocks.every((b, i) => b.equals(AUDIO_POOL_PATCHES[i].original));
+    const allPatched = blocks.every((b, i) => b.equals(AUDIO_POOL_PATCHES[i].patched));
+    return {
+      supported: allOrig || allPatched,
+      applied:   allPatched,
+      bytes:     blocks.map(b => b.toString('hex')),
+    };
+  } catch (err) {
+    return { supported: false, applied: false, error: err.message };
+  }
+});
+
+ipcMain.handle('apply-audio-pool-fix', async (_event, { exePath, enable } = {}) => {
+  if (!exePath) return { success: false, error: 'No exe path' };
+  let fh;
+  try {
+    const bakPath = exePath + '.bak';
+    try { await fs.promises.access(bakPath); }
+    catch { await fs.promises.copyFile(exePath, bakPath); }
+
+    const blocks     = await readAudioPoolBlocks(exePath);
+    const allOrig    = blocks.every((b, i) => b.equals(AUDIO_POOL_PATCHES[i].original));
+    const allPatched = blocks.every((b, i) => b.equals(AUDIO_POOL_PATCHES[i].patched));
+
+    if (enable  && allPatched) return { success: true, alreadyApplied: true };
+    if (!enable && allOrig)    return { success: true, alreadyApplied: true };
+
+    if (enable  && !allOrig)    return { success: false, error: 'DP.exe bytes do not match expected v1.01b state. Refused to patch.' };
+    if (!enable && !allPatched) return { success: false, error: 'Patches not applied — nothing to revert.' };
+
+    fh = await fs.promises.open(exePath, 'r+');
+    for (const p of AUDIO_POOL_PATCHES) {
+      const target = enable ? p.patched : p.original;
+      await fh.write(target, 0, target.length, p.offset);
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  } finally {
+    try { await fh?.close(); } catch {}
+  }
+});
+
+// ─────────────────────────────────────────────
 // IPC – DXVK Shader Cache info / cleanup
 //
 // DXVK writes a state cache file as `<exe_name>.dxvk-cache` next to the
