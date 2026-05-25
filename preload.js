@@ -102,4 +102,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   savesRestore:     (gameDir, id)       => ipcRenderer.invoke('saves-restore',  gameDir, id),
   savesDelete:      (gameDir, id)       => ipcRenderer.invoke('saves-delete',   gameDir, id),
   savesSetDesc:     (gameDir, id, desc) => ipcRenderer.invoke('saves-set-desc', gameDir, id, desc),
+
+  // ── v1.4.0 Stability / Diagnostics / Compatibility ─────────────
+  crashdumpStatus:           ()                 => ipcRenderer.invoke('crashdump-status'),
+  crashdumpEnable:           (opts)             => ipcRenderer.invoke('crashdump-enable', opts || {}),
+  crashdumpDisable:          ()                 => ipcRenderer.invoke('crashdump-disable'),
+  crashdumpOpenFolder:       ()                 => ipcRenderer.invoke('crashdump-open-folder'),
+  crashdumpCopyInstructions: ()                 => ipcRenderer.invoke('crashdump-copy-instructions'),
+  mediaCheck:                ()                 => ipcRenderer.invoke('media-check'),
+  mediaTestPlayback:         (gameDir)          => ipcRenderer.invoke('media-test-playback', { gameDir }),
+  physxCheck:                ()                 => ipcRenderer.invoke('physx-check'),
+  stabilityModeStatus:       (gameDir)          => ipcRenderer.invoke('stability-mode-status', { gameDir }),
+  stabilityModeApply:        (gameDir)          => ipcRenderer.invoke('stability-mode-apply',  { gameDir }),
+  stabilityModeRevert:       (gameDir)          => ipcRenderer.invoke('stability-mode-revert', { gameDir }),
+  diagnosticExport:          (gameDir, opts)    => ipcRenderer.invoke('diagnostic-export', { gameDir, ...(opts || {}) }),
+  xidiOpenPage:              ()                 => ipcRenderer.invoke('xidi-open-page'),
+  xidiCheckInstalled:        (gameDir)          => ipcRenderer.invoke('xidi-check-installed', { gameDir }),
+
+  // First-run preset picker (v1.4)
+  systemInfo:                ()                 => ipcRenderer.invoke('system-info'),
+  applyPreset:               (gameDir, preset, with4gb) =>
+                              ipcRenderer.invoke('apply-preset', { gameDir, preset, with4gb }),
 });

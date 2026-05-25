@@ -693,8 +693,9 @@ html, body {
 .settings-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 130px 1fr;
+  grid-template-columns: 130px minmax(0, 1fr);
   min-height: 0;
+  min-width: 0;
 }
 .settings-nav {
   display: flex; flex-direction: column;
@@ -738,9 +739,69 @@ html, body {
 .settings-content {
   padding: 16px 18px;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
+  max-width: 100%;
 }
-.settings-section { display: none; animation: section-in 0.22s var(--ease); }
+.settings-section {
+  display: none;
+  animation: section-in 0.22s var(--ease);
+  min-width: 0;
+  max-width: 100%;
+}
 .settings-section.active { display: block; }
+.settings-section p,
+.settings-section li,
+.settings-section .compat-note,
+.settings-section .settings-help,
+.settings-section .firstrun-preset-desc,
+.settings-section .firstrun-preset-name {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+/* All form rows, buttons, action groups should also wrap nicely */
+.settings-section .compat-actions { flex-wrap: wrap; }
+.settings-section .form-row       { flex-wrap: wrap; gap: 6px; }
+
+/* Known Risky Areas — compact single-column stack */
+.risky-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.risky-card {
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.03);
+  border-left: 2px solid rgba(228,65,65,0.45);
+  border-radius: 0 4px 4px 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.risky-card-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text, #e8e8e8);
+  display: inline;
+}
+.risky-card-title::after { content: ' — '; opacity: 0.4; }
+.risky-card-desc {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-dim, rgba(255,255,255,0.55));
+  display: inline;
+}
+.risky-tips {
+  margin-top: 8px;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
 
 @keyframes section-in {
   from { opacity: 0; transform: translateY(4px); }
@@ -2688,7 +2749,124 @@ body[data-view="settings"] .settings-close { display: none; }
   align-self: center;
 }
 
-.firstrun-actions-step2 { justify-content: space-between; }
+.firstrun-actions-step2 { justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+/* ─── Preset picker (v1.4) ──────────────────────────────────────── */
+.firstrun-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 12px;
+}
+
+.firstrun-preset {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.firstrun-preset:hover { border-color: rgba(255,255,255,0.20); }
+
+.firstrun-preset input[type="radio"] {
+  accent-color: var(--accent, #e44141);
+  margin-top: 3px;
+  flex: 0 0 16px;
+  width: 16px; height: 16px;
+}
+
+.firstrun-preset:has(input:checked) {
+  border-color: rgba(228,65,65,0.55);
+  background: linear-gradient(135deg, rgba(228,65,65,0.10), rgba(228,65,65,0.02));
+}
+
+.firstrun-preset-body { flex: 1; min-width: 0; }
+
+.firstrun-preset-name {
+  font-weight: 600;
+  color: var(--text, #e8e8e8);
+  display: inline-block;
+}
+
+.firstrun-preset-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.65);
+  vertical-align: middle;
+}
+
+.firstrun-preset:has(input:checked) .firstrun-preset-tag {
+  background: rgba(228,65,65,0.20);
+  color: #ffc0c0;
+}
+
+.firstrun-preset-desc {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(255,255,255,0.55);
+}
+
+/* Optional extras (4GB Patch — conditional on RAM) */
+.firstrun-extras {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255,255,255,0.08);
+}
+
+.firstrun-extra {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.firstrun-extra input[type="checkbox"] {
+  accent-color: var(--accent, #e44141);
+  margin-top: 3px;
+}
+
+.firstrun-extra-body { flex: 1; }
+.firstrun-extra-name { font-weight: 600; color: var(--text, #e8e8e8); }
+.firstrun-extra-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.50);
+}
+.firstrun-extra-status {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.45);
+}
+
+.firstrun-preset-status {
+  margin: 8px 0;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: rgba(255,255,255,0.65);
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  display: none;
+  white-space: pre-line;
+}
+
+.firstrun-preset-status.active { display: block; }
+.firstrun-preset-status.ok    { color: #a5e8b8; background: rgba(108,217,154,0.06); }
+.firstrun-preset-status.error { color: #f7c0c0; background: rgba(240,133,133,0.06); }
 
 /* Step 3 — done state */
 .firstrun-done {

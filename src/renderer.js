@@ -342,6 +342,14 @@ function activateSettingsSection(name) {
     refreshCursorHideStatus();
     refreshCaptureCursorStatus();
   }
+  if (name === 'stability') {
+    refreshStabilityMode();
+    refreshCrashdumpStatus();
+    refreshPhysxStatus();
+  }
+  if (name === 'presets') {
+    detectCurrentPreset();
+  }
   if (name === 'graphics')      refreshDxvkRevertStatus();
   if (name === 'dxvk')          refreshDxvkCacheStatus();
   if (name === 'advanced')      renderSavesList();
@@ -2652,6 +2660,10 @@ function setupFirstRunModal() {
   $('btn-apply-4gb')?.addEventListener('click',  applyPatch4GB);
   $('btn-apply-dxvk')?.addEventListener('click', applyPatchDXVK);
 
+  // v1.4 preset picker
+  $('btn-firstrun-apply-preset')?.addEventListener('click', onFirstRunApplyPreset);
+  $('btn-firstrun-skip')?.addEventListener('click', () => setFirstRunStep(3));
+
   // Subscribe to setup-progress events (also feeds dashboard UPDATE card)
   window.electronAPI.onSetupProgress?.((msg) => {
     updateFirstRunComponent(msg);
@@ -2673,6 +2685,76 @@ function setFirstRunStep(n) {
   // Update step connectors
   const links = ov.querySelectorAll('.step-link');
   links.forEach((l, idx) => l.classList.toggle('done', idx + 1 < n));
+
+  // v1.4 — when entering step 2, refresh RAM-aware 4GB visibility
+  if (n === 2) refreshFirstRun4gbVisibility();
+}
+
+async function refreshFirstRun4gbVisibility() {
+  const extra4gb = $('extra-4gb');
+  const status   = $('opt-4gb-status');
+  const check    = $('opt-4gb');
+  if (!extra4gb) return;
+  try {
+    const info = await window.electronAPI.systemInfo?.();
+    const ramGB = info?.totalMemoryGB || 0;
+    // Show only if RAM > 4 GB (recommended target for 4GB patch)
+    if (ramGB > 4) {
+      extra4gb.style.display = '';
+      if (status) {
+        status.textContent = `${t('fr.systemRam') || 'System RAM'}: ${ramGB} GB — ${t('fr.patch4gbRecommended') || '4GB Patch recommended'}`;
+      }
+      if (check) check.checked = true;
+    } else {
+      extra4gb.style.display = 'none';
+      if (check) check.checked = false;
+    }
+  } catch {
+    // If RAM check fails, just show by default (safer)
+    extra4gb.style.display = '';
+  }
+}
+
+async function onFirstRunApplyPreset() {
+  const gameDir = firstRunState.gameDir;
+  if (!gameDir) return;
+  const selected = document.querySelector('input[name="firstrun-preset"]:checked')?.value || 'dpfix-dxvk';
+  const with4gb  = $('opt-4gb')?.checked || false;
+
+  const statusEl = $('firstrun-preset-status');
+  const applyBtn = $('btn-firstrun-apply-preset');
+  if (applyBtn) applyBtn.disabled = true;
+  if (statusEl) {
+    statusEl.textContent = t('fr.applyingPreset') || 'Applying preset...';
+    statusEl.className = 'firstrun-preset-status active';
+  }
+
+  try {
+    const r = await window.electronAPI.applyPreset?.(gameDir, selected, with4gb);
+    if (r?.success) {
+      if (statusEl) {
+        statusEl.textContent = (r.steps || []).join('\n');
+        statusEl.className = 'firstrun-preset-status active ok';
+      }
+      logActivity('completed', `Preset applied: ${selected}${with4gb ? ' + 4GB' : ''}`);
+      showToast((t('fr.presetApplied') || 'Preset applied') + `: ${selected}`, 'success');
+      // Auto-advance to step 3 after a brief delay so user sees the result
+      setTimeout(() => setFirstRunStep(3), 1200);
+    } else {
+      if (statusEl) {
+        statusEl.textContent = ((r?.steps || []).join('\n') + '\n' + (r?.error || 'failed')).trim();
+        statusEl.className = 'firstrun-preset-status active error';
+      }
+      showToast((t('fr.presetError') || 'Preset error: ') + (r?.error || ''), 'error');
+      if (applyBtn) applyBtn.disabled = false;
+    }
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = err.message;
+      statusEl.className = 'firstrun-preset-status active error';
+    }
+    if (applyBtn) applyBtn.disabled = false;
+  }
 }
 
 async function applyPatch4GB() {
@@ -2956,5 +3038,464 @@ async function logActivity(kind, text) {
   catch {}
   // Also refresh dashboard activity list
   setTimeout(renderActivity, 100);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// v1.4.0 STABILITY / DIAGNOSTICS / COMPATIBILITY (UI handlers)
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function refreshStabilityMode() {
+  const statusEl = $('stability-mode-status');
+  const applyBtn = $('btn-stability-apply');
+  const revertBtn = $('btn-stability-revert');
+  const note = $('stability-mode-note');
+  const gameDir = getGameDir();
+  if (!gameDir) {
+    if (statusEl) statusEl.textContent = t('stability.noGame') || 'Set game path first';
+    if (applyBtn) applyBtn.disabled = true;
+    if (revertBtn) revertBtn.disabled = true;
+    return;
+  }
+  try {
+    const r = await window.electronAPI.stabilityModeStatus?.(gameDir);
+    if (!r) return;
+    if (r.enabled) {
+      if (statusEl) {
+        statusEl.textContent = t('stability.statusApplied') || '✓ Applied';
+        statusEl.className = 'compat-status ok';
+      }
+      if (applyBtn) applyBtn.disabled = true;
+      if (revertBtn) revertBtn.disabled = false;
+    } else {
+      if (statusEl) {
+        statusEl.textContent = t('stability.statusNotApplied') || '— Not applied';
+        statusEl.className = 'compat-status';
+      }
+      if (applyBtn) applyBtn.disabled = false;
+      if (revertBtn) revertBtn.disabled = true;
+    }
+    // Component breakdown
+    if (note && r.components) {
+      const checks = [];
+      checks.push(`${r.components.crashDump ? '✓' : '✗'} crash dumps`);
+      checks.push(`${r.components.fpsCapDxvk ? '✓' : '✗'} FPS cap 60`);
+      checks.push(`${r.components.dpfixBorderless ? '✓' : '✗'} DPfix borderless`);
+      note.textContent = checks.join(' · ');
+      note.className = 'compat-note';
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onStabilityApply() {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const ok = await openConfirm({
+    title: t('stability.confirmApplyTitle') || 'Apply Recommended Stability Mode?',
+    body:  t('stability.confirmApplyBody')  ||
+           'Launcher will: enable crash dump collection (HKCU), set DXVK FPS cap=60, ' +
+           'apply DPfix borderless/windowed-safe defaults (with backup). DPfix.ini will be ' +
+           'backed up to .stability-mode.bak. No DP.exe modification.',
+    okText: t('stability.applyBtn') || 'Apply',
+    cancelText: t('skipIntro.confirmCancel') || 'Cancel',
+  });
+  if (!ok) return;
+  const btn = $('btn-stability-apply');
+  const note = $('stability-mode-note');
+  if (btn) btn.disabled = true;
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+  try {
+    const r = await window.electronAPI.stabilityModeApply?.(gameDir);
+    if (r?.success) {
+      if (note) {
+        note.textContent = (r.steps || []).join(' · ');
+        note.className = 'compat-note ok';
+      }
+      showToast(t('toast.stabilityApplied') || 'Stability mode applied ✓', 'success');
+      logActivity('completed', 'Recommended Stability Mode applied');
+      refreshStabilityMode();
+      refreshCrashdumpStatus();
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+      showToast((t('toast.stabilityErr') || 'Error: ') + (r?.error || ''), 'error');
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function onStabilityRevert() {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const ok = await openConfirm({
+    title: t('stability.confirmRevertTitle') || 'Revert Stability Mode?',
+    body:  t('stability.confirmRevertBody')  || 'Restore previous DPfix.ini / dxvk.conf state and remove crash-dump registry keys (if added by this mode).',
+    okText: t('stability.revertBtn') || 'Revert',
+    cancelText: t('skipIntro.confirmCancel') || 'Cancel',
+  });
+  if (!ok) return;
+  const btn = $('btn-stability-revert');
+  const note = $('stability-mode-note');
+  if (btn) btn.disabled = true;
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+  try {
+    const r = await window.electronAPI.stabilityModeRevert?.(gameDir);
+    if (r?.success) {
+      if (note) {
+        note.textContent = (r.steps || []).join(' · ');
+        note.className = 'compat-note ok';
+      }
+      showToast(t('toast.stabilityReverted') || 'Stability mode reverted ✓', 'success');
+      logActivity('info', 'Recommended Stability Mode reverted');
+      refreshStabilityMode();
+      refreshCrashdumpStatus();
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function refreshCrashdumpStatus() {
+  const badge = $('crashdump-badge');
+  const note = $('crashdump-note');
+  try {
+    const r = await window.electronAPI.crashdumpStatus?.();
+    if (badge) {
+      if (r?.enabled) {
+        badge.textContent = `✓ ${t('saves.on') || 'On'}`;
+        badge.className = 'fix-item-badge ok';
+      } else {
+        badge.textContent = `— ${t('saves.off') || 'Off'}`;
+        badge.className = 'fix-item-badge';
+      }
+    }
+    if (note && r?.enabled) {
+      note.textContent = `Folder: ${r.folder || '?'} · DumpType=${r.type ?? '?'} · DumpCount=${r.count ?? '?'}`;
+      note.className = 'compat-note';
+    } else if (note) {
+      note.textContent = '';
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onCrashdumpEnable() {
+  const note = $('crashdump-note');
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+  try {
+    const r = await window.electronAPI.crashdumpEnable?.();
+    if (r?.success) {
+      if (note) {
+        note.textContent = (r.steps || []).join(' · ');
+        note.className = 'compat-note ok';
+      }
+      showToast(t('toast.crashdumpOn') || 'Crash dumps enabled ✓', 'success');
+      refreshCrashdumpStatus();
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onCrashdumpDisable() {
+  const note = $('crashdump-note');
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+  try {
+    const r = await window.electronAPI.crashdumpDisable?.();
+    if (r?.success) {
+      if (note) { note.textContent = t('crashdump.disabled') || 'Disabled'; note.className = 'compat-note'; }
+      showToast(t('toast.crashdumpOff') || 'Crash dumps disabled', 'success');
+      refreshCrashdumpStatus();
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onCrashdumpOpen() {
+  try {
+    const r = await window.electronAPI.crashdumpOpenFolder?.();
+    if (!r?.success) showToast(t('toast.crashdumpOpenErr') || 'Could not open folder', 'error');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function onCrashdumpCopy() {
+  try {
+    const r = await window.electronAPI.crashdumpCopyInstructions?.();
+    if (r?.success) {
+      showToast(t('toast.crashdumpCopied') || `Template copied to clipboard (${r.length} chars)`, 'success');
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function onMediaScan() {
+  const note = $('media-note');
+  const result = $('media-result');
+  const badge = $('media-badge');
+  if (note) { note.textContent = t('media.scanning') || 'Scanning...'; note.className = 'compat-note'; }
+  if (result) result.innerHTML = '';
+  try {
+    const r = await window.electronAPI.mediaCheck?.();
+    if (!r) return;
+    const items = [];
+    if (r.installed?.length) {
+      items.push(`<div><strong>${t('media.installedPacks') || 'Installed codec packs'}:</strong></div>`);
+      r.installed.forEach(p => {
+        items.push(`<div>⚠ ${p.name}: ${p.displayName}</div>`);
+      });
+    }
+    if (r.lavModules?.length) {
+      items.push(`<div><strong>${t('media.lavModules') || 'LAV modules on disk'}:</strong></div>`);
+      r.lavModules.forEach(m => {
+        items.push(`<div>⚠ ${m}</div>`);
+      });
+    }
+    if (!r.installed?.length && !r.lavModules?.length) {
+      items.push(`<div>✓ ${t('media.clean') || 'No codec packs / LAV modules detected'}</div>`);
+    }
+    if (result) result.innerHTML = items.join('');
+    if (badge) {
+      badge.textContent = r.risky ? '⚠' : '✓';
+      badge.className = r.risky ? 'fix-item-badge warn' : 'fix-item-badge ok';
+    }
+    if (note) {
+      note.textContent = r.risky
+        ? (t('media.warnText') || 'Codec packs detected — may interfere with WMV cutscenes')
+        : (t('media.cleanText') || 'No risky codec stack detected');
+      note.className = r.risky ? 'compat-note warn' : 'compat-note ok';
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onMediaTest() {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const note = $('media-note');
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+  try {
+    const r = await window.electronAPI.mediaTestPlayback?.(gameDir);
+    if (r?.success) {
+      if (note) {
+        note.textContent = `${t('media.tested') || 'Opened with system default'}: ${r.file} (${r.sizeKB} KB)`;
+        note.className = 'compat-note ok';
+      }
+    } else {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function refreshPhysxStatus() {
+  const badge = $('physx-badge');
+  const note = $('physx-note');
+  try {
+    const r = await window.electronAPI.physxCheck?.();
+    if (badge) {
+      if (r?.installed) {
+        badge.textContent = `✓ ${r.version || 'installed'}`;
+        badge.className = 'fix-item-badge ok';
+      } else {
+        badge.textContent = '⚠ missing';
+        badge.className = 'fix-item-badge warn';
+      }
+    }
+    if (note) {
+      if (r?.installed) {
+        note.textContent = `${t('physx.found') || 'Installed'}: ${r.version || '?'}${r.location ? ` · ${r.location}` : ''}`;
+        note.className = 'compat-note ok';
+      } else {
+        note.textContent = t('physx.missing') || 'NVIDIA PhysX legacy runtime not detected — game may not start';
+        note.className = 'compat-note warn';
+      }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onPhysxDownload() {
+  // Open NVIDIA PhysX legacy download page (community-known good version)
+  try {
+    await window.electronAPI.openExternal?.('https://www.nvidia.com/en-us/drivers/physx/physx-9-13-0725-driver/');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function onXidiCheck() {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const note = $('xidi-note');
+  const badge = $('xidi-badge');
+  try {
+    const r = await window.electronAPI.xidiCheckInstalled?.(gameDir);
+    if (badge) {
+      if (r?.installed) {
+        badge.textContent = `✓ ${t('xidi.installed') || 'installed'}`;
+        badge.className = 'fix-item-badge ok';
+      } else {
+        badge.textContent = '—';
+        badge.className = 'fix-item-badge';
+      }
+    }
+    if (note) {
+      const lines = [];
+      if (r?.installed) lines.push(`✓ ${t('xidi.installedFull') || 'Xidi appears to be installed (Xidi.ini found)'}`);
+      else lines.push(t('xidi.notInstalled') || 'Xidi is not installed in game folder');
+      if (r?.files?.length) {
+        lines.push((t('xidi.foundFiles') || 'Files in game folder') + ':');
+        r.files.forEach(f => lines.push(`  · ${f.name} (${f.sizeKB} KB)`));
+      }
+      note.textContent = lines.join('\n');
+      note.className = 'compat-note';
+      note.style.whiteSpace = 'pre-line';
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onXidiOpen() {
+  try { await window.electronAPI.xidiOpenPage?.(); }
+  catch (err) { showToast(err.message, 'error'); }
+}
+
+async function onDiagExport() {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const note = $('diag-export-note');
+  const btn = $('btn-diag-export');
+  if (btn) btn.disabled = true;
+  if (note) { note.textContent = t('diagExport.generating') || 'Building diagnostic package...'; note.className = 'compat-note'; }
+  try {
+    const r = await window.electronAPI.diagnosticExport?.(gameDir);
+    if (r?.success) {
+      if (note) {
+        note.textContent = `${t('diagExport.success') || 'Saved'}: ${r.outputPath} (${Math.round(r.size / 1024)} KB)`;
+        note.className = 'compat-note ok';
+      }
+      showToast(t('toast.diagExportOk') || 'Diagnostic package exported ✓', 'success');
+      logActivity('completed', `Diagnostic package: ${r.outputPath}`);
+    } else if (r?.error !== 'User cancelled') {
+      if (note) { note.textContent = r?.error || 'failed'; note.className = 'compat-note error'; }
+    } else {
+      if (note) { note.textContent = ''; note.className = 'compat-note'; }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function detectCurrentPreset() {
+  const note = $('settings-preset-status');
+  const gameDir = getGameDir();
+  if (!gameDir) {
+    if (note) { note.textContent = t('stability.noGame') || 'Set game path first'; note.className = 'compat-note'; }
+    return;
+  }
+  try {
+    const r = await window.electronAPI.checkDxvkApplied?.(gameDir);
+    let detected = 'unknown';
+    if (r?.systemDll && r?.gamePatched) detected = 'dpfix-dxvk';
+    // For dxvk-only vs dpfix-only we can't perfectly distinguish without
+    // reading d3d9.dll bytes, but if systemDll absent → likely dpfix-only
+    else if (!r?.systemDll && r?.gamePatched) detected = 'dpfix-only';
+    else if (r?.systemDll && !r?.gamePatched) detected = 'dxvk-only';
+    else detected = 'dpfix-only';
+    // Select the matching radio
+    const radio = document.querySelector(`input[name="settings-preset"][value="${detected}"]`);
+    if (radio) radio.checked = true;
+    if (note) {
+      note.textContent = `${t('presetsTab.current') || 'Current'}: ${detected}`;
+      note.className = 'compat-note ok';
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onSettingsApplyPreset() {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const selected = document.querySelector('input[name="settings-preset"]:checked')?.value;
+  if (!selected) return;
+
+  const ok = await openConfirm({
+    title: t('presetsTab.confirmTitle') || `Apply ${selected}?`,
+    body:  t('presetsTab.confirmBody')  ||
+           'Launcher will reconfigure the d3d9.dll chain accordingly. DXVK presets need admin (write to SysWOW64).',
+    okText: t('presetsTab.applyBtn') || 'Apply',
+    cancelText: t('skipIntro.confirmCancel') || 'Cancel',
+  });
+  if (!ok) return;
+
+  const note = $('settings-preset-status');
+  if (note) { note.textContent = '...'; note.className = 'compat-note'; }
+  try {
+    const r = await window.electronAPI.applyPreset?.(gameDir, selected, false);
+    if (r?.success) {
+      if (note) {
+        note.textContent = (r.steps || []).join(' · ');
+        note.className = 'compat-note ok';
+      }
+      showToast((t('toast.presetApplied') || 'Preset applied') + `: ${selected}`, 'success');
+      logActivity('completed', `Preset applied via Settings: ${selected}`);
+    } else {
+      if (note) {
+        note.textContent = ((r?.steps || []).join(' · ') + ' · ' + (r?.error || 'failed')).trim();
+        note.className = 'compat-note error';
+      }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+// Register event listeners (called from main init flow)
+function setupStabilityHandlers() {
+  $('btn-stability-apply')?.addEventListener('click', onStabilityApply);
+  $('btn-stability-revert')?.addEventListener('click', onStabilityRevert);
+  $('btn-crashdump-enable')?.addEventListener('click', onCrashdumpEnable);
+  $('btn-crashdump-disable')?.addEventListener('click', onCrashdumpDisable);
+  $('btn-crashdump-open')?.addEventListener('click', onCrashdumpOpen);
+  $('btn-crashdump-copy')?.addEventListener('click', onCrashdumpCopy);
+  $('btn-media-scan')?.addEventListener('click', onMediaScan);
+  $('btn-media-test')?.addEventListener('click', onMediaTest);
+  $('btn-physx-scan')?.addEventListener('click', refreshPhysxStatus);
+  $('btn-physx-download')?.addEventListener('click', onPhysxDownload);
+  $('btn-xidi-check')?.addEventListener('click', onXidiCheck);
+  $('btn-xidi-open')?.addEventListener('click', onXidiOpen);
+  $('btn-diag-export')?.addEventListener('click', onDiagExport);
+  $('btn-settings-apply-preset')?.addEventListener('click', onSettingsApplyPreset);
+  $('btn-settings-detect-preset')?.addEventListener('click', detectCurrentPreset);
+}
+
+// Auto-register if document ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupStabilityHandlers);
+} else {
+  setupStabilityHandlers();
 }
 

@@ -246,6 +246,22 @@
             </svg>
             <span data-i18n="settings.accessibility">Accessibility</span>
           </button>
+          <button class="settings-nav-btn" data-section="stability">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2l8 4v6c0 5-3 9-8 10-5-1-8-5-8-10V6l8-4z"/>
+              <path d="M9 12l2 2 4-4"/>
+            </svg>
+            <span data-i18n="settings.stability">Stability</span>
+          </button>
+          <button class="settings-nav-btn" data-section="presets">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 6h16M4 12h16M4 18h10"/>
+              <circle cx="20" cy="18" r="2"/>
+            </svg>
+            <span data-i18n="settings.presets">Presets</span>
+          </button>
           <button class="settings-nav-btn" data-section="dxvk">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -592,6 +608,220 @@
             </details>
 
 
+          </section>
+
+          <!-- STABILITY (v1.4.0) -->
+          <section class="settings-section" data-section="stability">
+            <h4 class="form-subhead" data-i18n="stability.heroTitle">Recommended Stability Mode</h4>
+            <p class="settings-help" data-i18n-html="stability.heroHelp">
+              Композитний режим для крашів навколо <strong>катсцен / loading / building transitions</strong>
+              та для безпеки сейвів. Це <strong>НЕ audio-pool патч</strong> — він спрямований на класи багів,
+              які community report'ить найчастіше (transition state, cutscene boundaries, codec/PhysX runtime).
+            </p>
+            <div class="form-row">
+              <span class="form-label" data-i18n="stability.heroStatus">Mode status</span>
+              <span class="compat-status" id="stability-mode-status">—</span>
+            </div>
+            <div class="compat-actions">
+              <button class="btn-primary" id="btn-stability-apply" data-i18n="stability.applyBtn">
+                Apply Recommended Mode
+              </button>
+              <button class="btn-secondary" id="btn-stability-revert" data-i18n="stability.revertBtn" disabled>
+                Revert
+              </button>
+            </div>
+            <p class="compat-note" id="stability-mode-note"></p>
+
+            <!-- Crash Dump Helper -->
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="crashdump.title">Crash Dump Helper</span>
+                <span class="fix-item-badge" id="crashdump-badge">—</span>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n="crashdump.help">
+                Налаштовує Windows Error Reporting LocalDumps для DP.exe у HKCU (без адмін-прав).
+                Дампи зберігатимуться у %LOCALAPPDATA%\CrashDumps\.
+              </p>
+              <div class="compat-actions">
+                <button class="btn-primary btn-compact" id="btn-crashdump-enable" data-i18n="crashdump.enableBtn">
+                  Enable crash dump collection
+                </button>
+                <button class="btn-secondary btn-compact" id="btn-crashdump-disable" data-i18n="crashdump.disableBtn">
+                  Disable
+                </button>
+                <button class="btn-secondary btn-compact" id="btn-crashdump-open" data-i18n="crashdump.openBtn">
+                  Open crash folder
+                </button>
+                <button class="btn-secondary btn-compact" id="btn-crashdump-copy" data-i18n="crashdump.copyBtn">
+                  Copy report template
+                </button>
+              </div>
+              <p class="compat-note" id="crashdump-note"></p>
+            </details>
+
+            <!-- Media Compatibility Check -->
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="media.title">Media / Cutscene Compatibility</span>
+                <span class="fix-item-badge" id="media-badge">—</span>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n="media.help">
+                Шукає codec packs (LAV, K-Lite, MPC-HC, Shark007, ffdshow), які можуть викликати
+                фріз/чорний екран на катсценах WMV. Тільки detection, нічого не змінює автоматично.
+              </p>
+              <div class="compat-actions">
+                <button class="btn-secondary btn-compact" id="btn-media-scan" data-i18n="media.scanBtn">
+                  Scan codec packs
+                </button>
+                <button class="btn-secondary btn-compact" id="btn-media-test" data-i18n="media.testBtn">
+                  Test game video playback
+                </button>
+              </div>
+              <p class="compat-note" id="media-note"></p>
+              <div class="fix-item-info-grid" id="media-result"></div>
+            </details>
+
+            <!-- PhysX Legacy Check -->
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="physx.title">Legacy PhysX Check</span>
+                <span class="fix-item-badge" id="physx-badge">—</span>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n="physx.help">
+                Перевіряє наявність NVIDIA PhysX legacy runtime який DP1 використовує для фізики.
+                Steam Deck reference setup юзає PhysX 9.13.0725.
+              </p>
+              <div class="compat-actions">
+                <button class="btn-secondary btn-compact" id="btn-physx-scan" data-i18n="physx.scanBtn">
+                  Check installed PhysX
+                </button>
+                <button class="btn-secondary btn-compact" id="btn-physx-download" data-i18n="physx.downloadBtn">
+                  Download Legacy PhysX
+                </button>
+              </div>
+              <p class="compat-note" id="physx-note"></p>
+            </details>
+
+            <!-- Xidi Controller Compatibility -->
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="xidi.title">Controller Compatibility (Xidi)</span>
+                <span class="fix-item-badge" id="xidi-badge">—</span>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n="xidi.help">
+                Xidi — обгортка над старим DirectInput для сумісності з XInput-контролерами (Xbox/PlayStation/Steam Deck).
+                <strong>Тільки якщо є проблеми з контролером</strong> — це не crash fix, не для більшості users.
+              </p>
+              <div class="compat-actions">
+                <button class="btn-secondary btn-compact" id="btn-xidi-check" data-i18n="xidi.checkBtn">
+                  Check current state
+                </button>
+                <button class="btn-secondary btn-compact" id="btn-xidi-open" data-i18n="xidi.openBtn">
+                  Open Xidi releases
+                </button>
+              </div>
+              <p class="compat-note" id="xidi-note"></p>
+            </details>
+
+            <!-- Diagnostic Export -->
+            <h4 class="form-subhead" data-i18n="diagExport.title">Diagnostic Package Export</h4>
+            <p class="settings-help" data-i18n="diagExport.help">
+              Експорт zip-архіву з launcher state + результатами перевірок + game logs.
+              Без сейвів, без crash dumps (вони можуть бути великі). Корисно щоб надіслати з crash report.
+            </p>
+            <div class="compat-actions">
+              <button class="btn-primary" id="btn-diag-export" data-i18n="diagExport.btn">
+                Export Diagnostic Package
+              </button>
+            </div>
+            <p class="compat-note" id="diag-export-note"></p>
+
+            <!-- Known Risky Areas -->
+            <h4 class="form-subhead" data-i18n="risky.title">Known Risky Areas</h4>
+            <p class="settings-help" data-i18n-html="risky.intro">
+              Community-reported місця де crashes/freezes трапляються частіше. Не гарантовані причини —
+              просто паттерни.
+            </p>
+            <div class="risky-grid">
+              <div class="risky-card">
+                <div class="risky-card-title" data-i18n="risky.ep1ch6">Episode 1 / Chapter 6</div>
+                <div class="risky-card-desc" data-i18n="risky.ep1ch6Desc">Community Center area, quest timeframe transitions</div>
+              </div>
+              <div class="risky-card">
+                <div class="risky-card-title" data-i18n="risky.ep2ch9">Episode 2 / Chapter 9</div>
+                <div class="risky-card-desc" data-i18n="risky.ep2ch9Desc">Art Gallery exit, state-machine crash</div>
+              </div>
+              <div class="risky-card">
+                <div class="risky-card-title" data-i18n="risky.diner">A&amp;G Diner / Olivia</div>
+                <div class="risky-card-desc" data-i18n="risky.dinerDesc">Cutscene + voice + ambient layered audio</div>
+              </div>
+              <div class="risky-card">
+                <div class="risky-card-title" data-i18n="risky.milkbarn">Milk Barn</div>
+                <div class="risky-card-desc" data-i18n="risky.milkbarnDesc">Building exit transitions</div>
+              </div>
+              <div class="risky-card">
+                <div class="risky-card-title" data-i18n="risky.introMovie">Intro movie</div>
+                <div class="risky-card-desc" data-i18n="risky.introDesc">FMV / VC-1 codec compatibility</div>
+              </div>
+            </div>
+            <p class="settings-help risky-tips" data-i18n-html="risky.tips">
+              <strong>Рекомендовано:</strong> Recommended Stability Mode • Save Backup •
+              якщо crash повторюється — спробуй smoking/sleeping in-game щоб advance time.
+            </p>
+
+          </section>
+
+          <!-- PRESETS (v1.4) -->
+          <section class="settings-section" data-section="presets">
+            <h4 class="form-subhead" data-i18n="presetsTab.title">Rendering Preset</h4>
+            <p class="settings-help" data-i18n-html="presetsTab.help">
+              Переключайся між трьома render-конфігураціями без проходження wizard'а.
+              Усі пресети зберігають DPfix hex-патчі у DP.exe (widescreen / FOV / 4GB) — змінюється
+              лише <strong>як DP.exe ходить у D3D9</strong>: через DXVK (Vulkan), через native D3D9, або обидвa.
+            </p>
+
+            <div class="firstrun-presets" id="settings-preset-picker">
+              <label class="firstrun-preset">
+                <input type="radio" name="settings-preset" value="dpfix-dxvk">
+                <div class="firstrun-preset-body">
+                  <div class="firstrun-preset-name" data-i18n="fr.presetDpfixDxvk">DPfix + DXVK</div>
+                  <div class="firstrun-preset-tag" data-i18n="fr.presetDpfixDxvkTag">Optimal</div>
+                  <div class="firstrun-preset-desc" data-i18n="fr.presetDpfixDxvkDesc">
+                    Vulkan + DPfix wrapper. Найстабільніше, повільніший first-load.
+                  </div>
+                </div>
+              </label>
+              <label class="firstrun-preset">
+                <input type="radio" name="settings-preset" value="dxvk-only">
+                <div class="firstrun-preset-body">
+                  <div class="firstrun-preset-name" data-i18n="fr.presetDxvkOnly">DXVK тільки</div>
+                  <div class="firstrun-preset-tag" data-i18n="fr.presetDxvkOnlyTag">Швидке завантаження</div>
+                  <div class="firstrun-preset-desc" data-i18n="fr.presetDxvkOnlyDesc">
+                    Vulkan без DPfix wrapper. Без widescreen/FOV, швидше після першого запуску.
+                  </div>
+                </div>
+              </label>
+              <label class="firstrun-preset">
+                <input type="radio" name="settings-preset" value="dpfix-only">
+                <div class="firstrun-preset-body">
+                  <div class="firstrun-preset-name" data-i18n="fr.presetDpfixOnly">DPfix тільки</div>
+                  <div class="firstrun-preset-tag" data-i18n="fr.presetDpfixOnlyTag">Native D3D9</div>
+                  <div class="firstrun-preset-desc" data-i18n="fr.presetDpfixOnlyDesc">
+                    Native d3d9 з System32. Без Vulkan, мінімум залежностей.
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div class="compat-actions">
+              <button class="btn-primary" id="btn-settings-apply-preset" data-i18n="presetsTab.applyBtn">
+                Apply Selected Preset
+              </button>
+              <button class="btn-secondary" id="btn-settings-detect-preset" data-i18n="presetsTab.detectBtn">
+                Detect Current
+              </button>
+            </div>
+            <p class="compat-note" id="settings-preset-status"></p>
           </section>
 
           <!-- DXVK -->
@@ -996,58 +1226,82 @@
       <!-- Step 2 — optional patches -->
       <div class="firstrun-step-body" data-step-body="2">
         <p class="firstrun-intro" data-i18n="fr.step2Intro">
-          Тепер можна застосувати додаткові патчі. Це необов'язково, але рекомендовано
-          для стабільної роботи гри.
+          Виберіть пресет: він налаштує рендеринг + сумісність одним кліком.
+          4GB Patch пропонується якщо у системі більше 4 ГБ оперативної пам'яті.
         </p>
 
-        <div class="firstrun-comps">
-
-          <!-- 4GB Patch card -->
-          <div class="firstrun-patch" id="patch-4gb">
-            <div class="firstrun-comp-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="4" y="6" width="16" height="12" rx="2"/>
-                <path d="M8 10v4M12 10v4M16 10v4"/>
-              </svg>
-            </div>
-            <div class="firstrun-comp-info">
-              <div class="firstrun-comp-name" data-i18n="fr.apply4gb">Застосувати 4GB Patch</div>
-              <div class="firstrun-patch-desc" data-i18n-html="fr.apply4gbDesc">
-                Знімає обмеження 2 ГБ оперативної пам'яті для <code>DP.exe</code>.
-                Без цього гра може вилітати на сучасних системах.
+        <!-- Preset picker -->
+        <div class="firstrun-presets" id="firstrun-preset-picker">
+          <label class="firstrun-preset" data-preset="dpfix-dxvk">
+            <input type="radio" name="firstrun-preset" value="dpfix-dxvk" checked>
+            <div class="firstrun-preset-body">
+              <div class="firstrun-preset-name" data-i18n="fr.presetDpfixDxvk">DPfix + DXVK</div>
+              <div class="firstrun-preset-tag" data-i18n="fr.presetDpfixDxvkTag">Оптимально</div>
+              <div class="firstrun-preset-desc" data-i18n="fr.presetDpfixDxvkDesc">
+                Vulkan-рендерер + DPfix widescreen/FOV/HUD-фікси. Найстабільніше для більшості систем,
+                але перший запуск повільніший (DXVK компілює shader cache).
               </div>
-              <div class="firstrun-patch-status" id="patch-4gb-status">—</div>
             </div>
-            <button class="btn-primary firstrun-patch-btn" id="btn-apply-4gb" data-i18n="fr.yes">Так</button>
-          </div>
+          </label>
 
-          <!-- DXVK card -->
-          <div class="firstrun-patch" id="patch-dxvk">
-            <div class="firstrun-comp-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>
-              </svg>
-            </div>
-            <div class="firstrun-comp-info">
-              <div class="firstrun-comp-name" data-i18n="fr.applyDxvk">Застосувати DXVK</div>
-              <div class="firstrun-patch-desc" data-i18n-html="fr.applyDxvkDesc">
-                Vulkan-рендерер для Direct3D 9 — підвищує стабільність та FPS.
-                Копіює <code>d9vk.dll</code> до SysWOW64 і патчить
-                <code>d3d9.dll</code> у грі. Потрібні права адміністратора.
+          <label class="firstrun-preset" data-preset="dxvk-only">
+            <input type="radio" name="firstrun-preset" value="dxvk-only">
+            <div class="firstrun-preset-body">
+              <div class="firstrun-preset-name" data-i18n="fr.presetDxvkOnly">DXVK тільки</div>
+              <div class="firstrun-preset-tag" data-i18n="fr.presetDxvkOnlyTag">Швидке завантаження</div>
+              <div class="firstrun-preset-desc" data-i18n="fr.presetDxvkOnlyDesc">
+                Vulkan-рендерер без DPfix wrapper. Швидше після першого запуску.
+                Без widescreen/FOV-фіксів, але всі DPfix exe-патчі (4GB, etc.) лишаються.
               </div>
-              <div class="firstrun-patch-status" id="patch-dxvk-status">—</div>
             </div>
-            <button class="btn-primary firstrun-patch-btn" id="btn-apply-dxvk" data-i18n="fr.yes">Так</button>
-          </div>
+          </label>
 
+          <label class="firstrun-preset" data-preset="dpfix-only">
+            <input type="radio" name="firstrun-preset" value="dpfix-only">
+            <div class="firstrun-preset-body">
+              <div class="firstrun-preset-name" data-i18n="fr.presetDpfixOnly">DPfix тільки</div>
+              <div class="firstrun-preset-tag" data-i18n="fr.presetDpfixOnlyTag">Native D3D9</div>
+              <div class="firstrun-preset-desc" data-i18n="fr.presetDpfixOnlyDesc">
+                DPfix із нативним d3d9 з System32. Мінімум залежностей.
+                Підходить якщо DXVK дає проблеми або стара GPU без Vulkan.
+              </div>
+            </div>
+          </label>
         </div>
 
+        <!-- 4GB Patch — conditional (only shown when RAM > 4GB) -->
+        <div class="firstrun-extras" id="firstrun-extras">
+          <label class="firstrun-extra" id="extra-4gb">
+            <input type="checkbox" id="opt-4gb" checked>
+            <div class="firstrun-extra-body">
+              <div class="firstrun-extra-name" data-i18n="fr.extra4gb">4GB Patch</div>
+              <div class="firstrun-extra-desc" data-i18n="fr.extra4gbDesc">
+                Знімає 2 ГБ ліміт пам'яті для DP.exe. Рекомендовано якщо у системі &gt; 4 ГБ RAM.
+              </div>
+              <div class="firstrun-extra-status" id="opt-4gb-status">—</div>
+            </div>
+          </label>
+        </div>
+
+        <!-- Preset application status -->
+        <div class="firstrun-preset-status" id="firstrun-preset-status"></div>
+
         <footer class="firstrun-actions firstrun-actions-step2">
-          <button class="btn-secondary" id="btn-firstrun-back"   data-i18n="fr.back">Назад</button>
-          <button class="btn-primary"   id="btn-firstrun-next-3" data-i18n="fr.next">Далі</button>
+          <button class="btn-secondary" id="btn-firstrun-back"           data-i18n="fr.back">Назад</button>
+          <button class="btn-primary"   id="btn-firstrun-apply-preset"   data-i18n="fr.applyPreset">Застосувати пресет</button>
         </footer>
+
+        <!-- Legacy hidden patch cards (kept for code compat — JS may still reference status fields) -->
+        <div class="firstrun-comps" style="display:none">
+          <div class="firstrun-patch" id="patch-4gb">
+            <div class="firstrun-patch-status" id="patch-4gb-status">—</div>
+            <button id="btn-apply-4gb"></button>
+          </div>
+          <div class="firstrun-patch" id="patch-dxvk">
+            <div class="firstrun-patch-status" id="patch-dxvk-status">—</div>
+            <button id="btn-apply-dxvk"></button>
+          </div>
+        </div>
       </div><!-- /step-body=2 -->
 
       <!-- Step 3 — done -->

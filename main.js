@@ -2349,3 +2349,859 @@ ipcMain.handle('install-redist', async (_event, gameDir) => {
 
   return results;
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// v1.4.0 STABILITY / DIAGNOSTICS / COMPATIBILITY
+//
+// Empirical refutation of audio-pool overflow as primary crash cause
+// (see docs/RE_JOURNEY.md Postscript III & IV) pivoted us toward
+// transition/state/media class bugs. This block adds launcher-side
+// safety features that target THOSE actual crash causes:
+//
+//   * Crash Dump Helper      — HKCU LocalDumps reg keys (no admin)
+//   * Media Compatibility    — detect LAV / K-Lite / codec pack remnants
+//   * PhysX Legacy Check     — detect installed NVIDIA PhysX runtime
+//   * Recommended Mode       — composite-toggle that flips safe defaults
+//   * Diagnostic Export      — zip of launcher state for community triage
+//
+// All operations prefer HKCU over HKLM, never modify DP.exe binary, never
+// uninstall third-party software, never run elevated unless explicitly
+// requested.
+// ═════════════════════════════════════════════════════════════════════════════
+
+const { execFile, exec } = require('child_process');
+
+function execAsync(cmd, args, options = {}) {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { windowsHide: true, ...options }, (err, stdout, stderr) => {
+      resolve({ err, stdout: stdout || '', stderr: stderr || '' });
+    });
+  });
+}
+
+function execShellAsync(cmdline, options = {}) {
+  return new Promise((resolve) => {
+    exec(cmdline, { windowsHide: true, ...options }, (err, stdout, stderr) => {
+      resolve({ err, stdout: stdout || '', stderr: stderr || '' });
+    });
+  });
+}
+
+async function regQuery(keyPath, valueName) {
+  const args = ['QUERY', keyPath];
+  if (valueName) args.push('/v', valueName);
+  const { err, stdout } = await execAsync('reg.exe', args);
+  if (err) return null;
+  return stdout;
+}
+
+async function regAdd(keyPath, valueName, type, data) {
+  const args = ['ADD', keyPath, '/v', valueName, '/t', type, '/d', String(data), '/f'];
+  const { err, stderr } = await execAsync('reg.exe', args);
+  return { ok: !err, error: err ? (stderr || err.message) : null };
+}
+
+async function regDelete(keyPath, valueName) {
+  const args = ['DELETE', keyPath];
+  if (valueName) args.push('/v', valueName);
+  args.push('/f');
+  const { err, stderr } = await execAsync('reg.exe', args);
+  return { ok: !err, error: err ? (stderr || err.message) : null };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CRASH DUMP HELPER (HKCU LocalDumps for DP.exe — no admin required)
+// ─────────────────────────────────────────────────────────────────────────────
+const CRASHDUMP_KEY = 'HKCU\\Software\\Microsoft\\Windows\\Windows Error Reporting\\LocalDumps\\DP.exe';
+const CRASHDUMP_FOLDER_DEFAULT = '%LOCALAPPDATA%\\CrashDumps';
+
+ipcMain.handle('crashdump-status', async () => {
+  const out = await regQuery(CRASHDUMP_KEY);
+  if (!out) return { enabled: false };
+  const folderMatch = out.match(/DumpFolder\s+REG_\w+\s+(.+)/i);
+  const typeMatch   = out.match(/DumpType\s+REG_DWORD\s+0x(\w+)/i);
+  const countMatch  = out.match(/DumpCount\s+REG_DWORD\s+0x(\w+)/i);
+  return {
+    enabled: true,
+    folder: folderMatch ? folderMatch[1].trim() : null,
+    type:   typeMatch   ? parseInt(typeMatch[1], 16) : null,
+    count:  countMatch  ? parseInt(countMatch[1], 16) : null,
+  };
+});
+
+ipcMain.handle('crashdump-enable', async (_event, { dumpFolder, dumpType, dumpCount } = {}) => {
+  const folder = dumpFolder || CRASHDUMP_FOLDER_DEFAULT;
+  const type   = dumpType   ?? 2;
+  const count  = dumpCount  ?? 10;
+  const steps = [];
+
+  // Ensure folder exists (expand env var first)
+  const expanded = folder.replace(/%([^%]+)%/g, (_, n) => process.env[n] || '');
+  try {
+    await fs.promises.mkdir(expanded, { recursive: true });
+    steps.push(`Created ${expanded}`);
+  } catch { /* may already exist */ }
+
+  const folderResult = await regAdd(CRASHDUMP_KEY, 'DumpFolder', 'REG_EXPAND_SZ', folder);
+  if (!folderResult.ok) return { success: false, error: `DumpFolder: ${folderResult.error}` };
+  steps.push('Set DumpFolder');
+
+  const typeResult = await regAdd(CRASHDUMP_KEY, 'DumpType', 'REG_DWORD', String(type));
+  if (!typeResult.ok) return { success: false, error: `DumpType: ${typeResult.error}` };
+  steps.push(`Set DumpType=${type}`);
+
+  const countResult = await regAdd(CRASHDUMP_KEY, 'DumpCount', 'REG_DWORD', String(count));
+  if (!countResult.ok) return { success: false, error: `DumpCount: ${countResult.error}` };
+  steps.push(`Set DumpCount=${count}`);
+
+  return { success: true, steps, folder: expanded };
+});
+
+ipcMain.handle('crashdump-disable', async () => {
+  const result = await regDelete(CRASHDUMP_KEY);
+  return { success: result.ok, error: result.error };
+});
+
+ipcMain.handle('crashdump-open-folder', async () => {
+  const expanded = (CRASHDUMP_FOLDER_DEFAULT).replace(/%([^%]+)%/g,
+    (_, n) => process.env[n] || '');
+  try {
+    await fs.promises.mkdir(expanded, { recursive: true });
+  } catch { /* may already exist */ }
+  await shell.openPath(expanded);
+  return { success: true, folder: expanded };
+});
+
+ipcMain.handle('crashdump-copy-instructions', async () => {
+  const { clipboard } = require('electron');
+  const tmpl = [
+    "Deadly Premonition crash report",
+    "================================",
+    "",
+    "Please send the following:",
+    "",
+    "1) Crash dump file (.dmp):",
+    "   Location: %LOCALAPPDATA%\\CrashDumps\\DP.exe.*.dmp",
+    "   Also check: C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportArchive\\",
+    "                 C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportQueue\\",
+    "",
+    "2) From Event Viewer (Windows Logs -> Application):",
+    "   - Faulting module name",
+    "   - Exception code",
+    "   - Fault offset",
+    "",
+    "3) Context:",
+    "   - Episode / Chapter:",
+    "   - In-game location:",
+    "   - Was there a cutscene starting or ending? yes / no",
+    "   - Was there a loading screen or building transition? yes / no",
+    "   - Was the crash reproducible? yes / no",
+    "",
+    "4) Your DP1 Launcher version (Settings -> About).",
+    "",
+    "Thank you — this helps make the launcher better for everyone.",
+  ].join('\n');
+  clipboard.writeText(tmpl);
+  return { success: true, length: tmpl.length };
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEDIA COMPATIBILITY CHECK
+//   Detects LAV Filters / K-Lite / MPC-HC / Shark007 in the uninstall registry
+//   AND checks whether LAV*.ax modules exist on disk. Read-only — never modifies.
+// ─────────────────────────────────────────────────────────────────────────────
+const CODEC_PACK_PATTERNS = [
+  { name: 'LAV Filters',  pattern: /LAV\s*Filters/i },
+  { name: 'K-Lite Codec', pattern: /K[- ]?Lite/i },
+  { name: 'MPC-HC',       pattern: /Media Player Classic|MPC-HC/i },
+  { name: 'Shark007',     pattern: /Shark.?007/i },
+  { name: 'CCCP',         pattern: /Combined Community Codec Pack|CCCP/i },
+  { name: 'ffdshow',      pattern: /ffdshow/i },
+];
+
+async function scanUninstallKey(rootKey) {
+  const out = await regQuery(rootKey);
+  if (!out) return [];
+  const lines = out.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const subkeys = lines.filter(l => l.startsWith(rootKey));
+  const found = [];
+  for (const sub of subkeys) {
+    const detail = await regQuery(sub, 'DisplayName');
+    if (!detail) continue;
+    const m = detail.match(/DisplayName\s+REG_\w+\s+(.+)/i);
+    if (!m) continue;
+    const displayName = m[1].trim();
+    for (const cp of CODEC_PACK_PATTERNS) {
+      if (cp.pattern.test(displayName)) {
+        found.push({ name: cp.name, displayName, key: sub });
+        break;
+      }
+    }
+  }
+  return found;
+}
+
+async function findLavModules() {
+  const candidates = [
+    'C:\\Program Files\\LAV Filters',
+    'C:\\Program Files (x86)\\LAV Filters',
+    'C:\\Program Files\\K-Lite Codec Pack\\Filters\\LAV',
+    'C:\\Program Files (x86)\\K-Lite Codec Pack\\Filters\\LAV',
+  ];
+  const files = ['LAVVideo.ax', 'LAVSplitter.ax', 'LAVAudio.ax'];
+  const out = [];
+  for (const dir of candidates) {
+    for (const f of files) {
+      const full = path.join(dir, f);
+      try {
+        await fs.promises.access(full);
+        out.push(full);
+      } catch { /* skip */ }
+    }
+  }
+  // Also check default LAV registration via 64-bit
+  const x64Files = [
+    'C:\\Program Files\\LAV Filters\\x64\\LAVVideo.ax',
+    'C:\\Program Files\\LAV Filters\\x64\\LAVSplitter.ax',
+    'C:\\Program Files\\LAV Filters\\x64\\LAVAudio.ax',
+  ];
+  for (const f of x64Files) {
+    try { await fs.promises.access(f); out.push(f); } catch { /* skip */ }
+  }
+  return out;
+}
+
+ipcMain.handle('media-check', async () => {
+  const installed = [
+    ...(await scanUninstallKey('HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall')),
+    ...(await scanUninstallKey('HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall')),
+    ...(await scanUninstallKey('HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall')),
+  ];
+  // Dedup
+  const seen = new Set();
+  const dedupInstalled = installed.filter(i => {
+    const key = `${i.name}::${i.displayName}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const lavModules = await findLavModules();
+  return {
+    installed: dedupInstalled,
+    lavModules,
+    risky: dedupInstalled.length > 0 || lavModules.length > 0,
+  };
+});
+
+ipcMain.handle('media-test-playback', async (_event, { gameDir } = {}) => {
+  if (!gameDir) return { success: false, error: 'gameDir not provided' };
+  // Look for a small .wmv file in updata/movie or updata_eu/_us/movie
+  const movieDirs = [
+    path.join(gameDir, 'updata', 'movie'),
+    path.join(gameDir, 'updata_eu', '_us', 'movie'),
+    path.join(gameDir, 'movie'),
+  ];
+  let chosen = null;
+  for (const md of movieDirs) {
+    try {
+      const files = await fs.promises.readdir(md);
+      const wmvs = files
+        .filter(f => /\.wmv$/i.test(f))
+        .map(f => ({ name: f, full: path.join(md, f) }));
+      if (!wmvs.length) continue;
+      // Pick smallest .wmv to minimise test time
+      const sizes = await Promise.all(wmvs.map(async w => {
+        try { return { ...w, size: (await fs.promises.stat(w.full)).size }; }
+        catch { return { ...w, size: Infinity }; }
+      }));
+      sizes.sort((a, b) => a.size - b.size);
+      chosen = sizes[0];
+      break;
+    } catch { /* dir missing */ }
+  }
+  if (!chosen) return { success: false, error: 'No .wmv files found in game directory' };
+
+  try {
+    await shell.openPath(chosen.full);
+    return { success: true, file: chosen.name, sizeKB: Math.round(chosen.size / 1024) };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGACY PHYSX CHECK
+//   Reads HKLM\SOFTWARE\AGEIA Technologies (legacy installer location).
+//   Read-only.
+// ─────────────────────────────────────────────────────────────────────────────
+ipcMain.handle('physx-check', async () => {
+  const result = { installed: false, version: null, location: null };
+  // AGEIA PhysX legacy registry (modern PhysX uses different keys)
+  const ageiaKey = 'HKLM\\SOFTWARE\\WOW6432Node\\AGEIA Technologies';
+  const ageiaKey32 = 'HKLM\\SOFTWARE\\AGEIA Technologies';
+  for (const key of [ageiaKey, ageiaKey32]) {
+    const out = await regQuery(key);
+    if (out) {
+      result.installed = true;
+      const versionMatch = out.match(/(?:Version|enginePath)\s+REG_\w+\s+(.+)/i);
+      if (versionMatch) {
+        result.version = versionMatch[1].trim();
+      }
+      const pathMatch = out.match(/enginePath\s+REG_\w+\s+(.+)/i);
+      if (pathMatch) result.location = pathMatch[1].trim();
+      break;
+    }
+  }
+  // Also check installed PhysX as a program
+  const ageiaInstalls = await scanUninstallKey('HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall');
+  // (reuse scanUninstallKey but match PhysX pattern)
+  // Easier: re-run with PhysX-specific pattern
+  for (const root of [
+    'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+    'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+  ]) {
+    const out = await regQuery(root);
+    if (!out) continue;
+    const lines = out.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const subkeys = lines.filter(l => l.startsWith(root));
+    for (const sub of subkeys) {
+      const detail = await regQuery(sub, 'DisplayName');
+      const ver    = await regQuery(sub, 'DisplayVersion');
+      if (detail && /PhysX/i.test(detail)) {
+        result.installed = true;
+        if (ver) {
+          const vm = ver.match(/DisplayVersion\s+REG_\w+\s+(.+)/i);
+          if (vm) result.version = vm[1].trim();
+        }
+        break;
+      }
+    }
+    if (result.installed && result.version) break;
+  }
+  return result;
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECOMMENDED STABILITY MODE
+//   Composite toggle that flips safe defaults:
+//     * Save backup worker → ON
+//     * Session timer reminder → ON
+//     * FPS cap (dxvk.conf 60) → ON
+//     * Crash dump collection → ON (HKCU LocalDumps)
+//     * Codec fix (watcher) → started on next game launch
+//
+//   On apply, saves a snapshot of previous state so revert can restore it.
+//   Stores snapshot in app.getPath('userData')/stability-mode.snapshot.json
+// ─────────────────────────────────────────────────────────────────────────────
+function stabilitySnapshotPath() {
+  return path.join(app.getPath('userData'), 'stability-mode.snapshot.json');
+}
+
+ipcMain.handle('stability-mode-status', async (_event, { gameDir } = {}) => {
+  const status = {
+    enabled: false,
+    components: {
+      crashDump:    false,
+      fpsCapDxvk:   false,
+      savesBackup:  false,
+      dpfixBorderless: false,
+    },
+  };
+  try {
+    const snap = await fs.promises.readFile(stabilitySnapshotPath(), 'utf8');
+    const parsed = JSON.parse(snap);
+    status.enabled = !!parsed.applied;
+    status.appliedAt = parsed.appliedAt;
+  } catch { /* not applied */ }
+  // Component checks (best-effort)
+  const dump = await regQuery(CRASHDUMP_KEY);
+  status.components.crashDump = !!dump;
+  if (gameDir) {
+    const dxvkConf = path.join(gameDir, 'dxvk.conf');
+    try {
+      const conf = await fs.promises.readFile(dxvkConf, 'utf8');
+      status.components.fpsCapDxvk = /dxvk\.maxFrameRate\s*=\s*60/.test(conf);
+    } catch { /* no conf */ }
+    const dpfixIni = path.join(gameDir, 'DPfix.ini');
+    try {
+      const ini = await fs.promises.readFile(dpfixIni, 'utf8');
+      status.components.dpfixBorderless =
+        /forceWindowed\s*=\s*1/i.test(ini) &&
+        /borderlessFullscreen\s*=\s*1/i.test(ini);
+    } catch { /* no DPfix.ini */ }
+  }
+  return status;
+});
+
+async function readIniSimple(filepath) {
+  try {
+    const txt = await fs.promises.readFile(filepath, 'utf8');
+    return txt;
+  } catch { return null; }
+}
+
+async function setIniKeys(filepath, kvs) {
+  // Read current content, modify lines, write back. Preserves order/comments.
+  let txt = (await readIniSimple(filepath)) || '';
+  for (const [k, v] of Object.entries(kvs)) {
+    const re = new RegExp(`^([ \\t]*${k}[ \\t]*=).*$`, 'mi');
+    if (re.test(txt)) {
+      txt = txt.replace(re, `$1 ${v}`);
+    } else {
+      txt += (txt.endsWith('\n') ? '' : '\n') + `${k} = ${v}\n`;
+    }
+  }
+  await fs.promises.writeFile(filepath, txt, 'utf8');
+}
+
+ipcMain.handle('stability-mode-apply', async (_event, { gameDir } = {}) => {
+  if (!gameDir) return { success: false, error: 'gameDir not provided' };
+  const steps = [];
+  const snapshot = { appliedAt: new Date().toISOString(), applied: true, prior: {} };
+
+  // 1. Enable crash dump collection
+  const dumpPrior = await regQuery(CRASHDUMP_KEY);
+  snapshot.prior.crashDumpEnabled = !!dumpPrior;
+  try {
+    await regAdd(CRASHDUMP_KEY, 'DumpFolder', 'REG_EXPAND_SZ', CRASHDUMP_FOLDER_DEFAULT);
+    await regAdd(CRASHDUMP_KEY, 'DumpType',   'REG_DWORD', '2');
+    await regAdd(CRASHDUMP_KEY, 'DumpCount',  'REG_DWORD', '10');
+    const expanded = CRASHDUMP_FOLDER_DEFAULT.replace(/%([^%]+)%/g, (_, n) => process.env[n] || '');
+    await fs.promises.mkdir(expanded, { recursive: true });
+    steps.push('Crash dump collection enabled');
+  } catch (e) {
+    steps.push(`Crash dump skip: ${e.message}`);
+  }
+
+  // 2. Set DXVK FPS cap = 60 (write/update dxvk.conf)
+  const dxvkConf = path.join(gameDir, 'dxvk.conf');
+  try {
+    const priorConf = await readIniSimple(dxvkConf);
+    snapshot.prior.dxvkConf = priorConf;
+    await setIniKeys(dxvkConf, { 'dxvk.maxFrameRate': '60' });
+    steps.push('DXVK FPS cap = 60');
+  } catch (e) {
+    steps.push(`DXVK conf skip: ${e.message}`);
+  }
+
+  // 3. Update DPfix.ini for borderless/windowed-safe defaults (if DPfix.ini exists)
+  const dpfixIni = path.join(gameDir, 'DPfix.ini');
+  try {
+    if (await exists(dpfixIni)) {
+      // Backup first
+      const bak = `${dpfixIni}.stability-mode.bak`;
+      try {
+        await fs.promises.copyFile(dpfixIni, bak);
+        steps.push(`DPfix.ini backup → ${path.basename(bak)}`);
+      } catch { /* ignore */ }
+      snapshot.prior.dpfixIni = await readIniSimple(dpfixIni);
+      // Common safer defaults for transition crashes
+      await setIniKeys(dpfixIni, {
+        forceWindowed: '1',
+        borderlessFullscreen: '1',
+      });
+      steps.push('DPfix forceWindowed=1, borderlessFullscreen=1');
+    }
+  } catch (e) {
+    steps.push(`DPfix.ini skip: ${e.message}`);
+  }
+
+  // 4. Save backup (autosave worker) — flip preference (renderer side reads this on next launcher start)
+  snapshot.prior.savesAutoBackup = global.__savesAutoBackupWasOn || null;
+  // Note: we don't start the worker here; renderer flips the toggle.
+  steps.push('Save backup recommended (toggle in Saves tab if not yet on)');
+
+  // Persist snapshot for revert
+  await fs.promises.writeFile(stabilitySnapshotPath(), JSON.stringify(snapshot, null, 2));
+
+  return { success: true, steps };
+});
+
+ipcMain.handle('stability-mode-revert', async (_event, { gameDir } = {}) => {
+  const steps = [];
+  let snap;
+  try {
+    snap = JSON.parse(await fs.promises.readFile(stabilitySnapshotPath(), 'utf8'));
+  } catch {
+    return { success: false, error: 'No applied snapshot found — nothing to revert.' };
+  }
+
+  // Restore crash dump (only if it wasn't already on before)
+  if (!snap.prior.crashDumpEnabled) {
+    await regDelete(CRASHDUMP_KEY);
+    steps.push('Crash dump collection disabled (was off before)');
+  } else {
+    steps.push('Crash dump kept (was on before)');
+  }
+
+  // Restore dxvk.conf
+  if (gameDir) {
+    const dxvkConf = path.join(gameDir, 'dxvk.conf');
+    if (typeof snap.prior.dxvkConf === 'string') {
+      try {
+        await fs.promises.writeFile(dxvkConf, snap.prior.dxvkConf, 'utf8');
+        steps.push('dxvk.conf restored');
+      } catch { /* ignore */ }
+    } else if (snap.prior.dxvkConf === null) {
+      try { await fs.promises.unlink(dxvkConf); steps.push('dxvk.conf removed (was absent before)'); } catch {}
+    }
+    // Restore DPfix.ini
+    const dpfixIni = path.join(gameDir, 'DPfix.ini');
+    if (typeof snap.prior.dpfixIni === 'string') {
+      try {
+        await fs.promises.writeFile(dpfixIni, snap.prior.dpfixIni, 'utf8');
+        steps.push('DPfix.ini restored');
+      } catch { /* ignore */ }
+    }
+  }
+
+  // Remove snapshot
+  try { await fs.promises.unlink(stabilitySnapshotPath()); } catch {}
+
+  return { success: true, steps };
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIAGNOSTIC PACKAGE EXPORT
+//   Builds a folder under userData with launcher state + check results +
+//   selected logs. User picks save location, we zip into single .zip.
+// ─────────────────────────────────────────────────────────────────────────────
+ipcMain.handle('diagnostic-export', async (_event, { gameDir, includeSaves = false, includeDumps = false } = {}) => {
+  if (!gameDir) return { success: false, error: 'gameDir not provided' };
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const stagingRoot = path.join(app.getPath('userData'), 'diagnostic-export', stamp);
+  try {
+    await fs.promises.mkdir(stagingRoot, { recursive: true });
+  } catch (e) {
+    return { success: false, error: `Staging dir: ${e.message}` };
+  }
+
+  const report = {
+    timestamp: new Date().toISOString(),
+    launcher: {
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+      electron: process.versions.electron,
+    },
+    system: {
+      windows: os.release(),
+      cpus: os.cpus().length,
+      totalMemoryMB: Math.round(os.totalmem() / 1024 / 1024),
+    },
+    gameDir,
+    checks: {},
+  };
+
+  // 1. Game files present
+  const checkFile = async (p) => {
+    try { const s = await fs.promises.stat(path.join(gameDir, p)); return { exists: true, size: s.size }; }
+    catch { return { exists: false }; }
+  };
+  report.checks.dpExe       = await checkFile('DP.exe');
+  report.checks.dpExeBackup = await checkFile('DP.exe.Backup');
+  report.checks.d3d9        = await checkFile('d3d9.dll');
+  report.checks.dpfixIni    = await checkFile('DPfix.ini');
+  report.checks.dpfixLog    = await checkFile('DPfix.log');
+  report.checks.dxvkConf    = await checkFile('dxvk.conf');
+
+  // 2. LAA flag (read PE header characteristics)
+  try {
+    const dpPath = path.join(gameDir, 'DP.exe');
+    const fd = await fs.promises.open(dpPath, 'r');
+    try {
+      const headBuf = Buffer.alloc(0x200);
+      await fd.read(headBuf, 0, 0x200, 0);
+      const eLfanew = headBuf.readUInt32LE(0x3C);
+      const charsBuf = Buffer.alloc(2);
+      await fd.read(charsBuf, 0, 2, eLfanew + 4 + 18);
+      const chars = charsBuf.readUInt16LE(0);
+      report.checks.laaApplied = (chars & 0x0020) !== 0;
+      report.checks.peCharacteristics = `0x${chars.toString(16)}`;
+    } finally {
+      await fd.close();
+    }
+  } catch (e) {
+    report.checks.laaApplied = null;
+    report.checks.peCharacteristicsError = e.message;
+  }
+
+  // 3. Media compatibility
+  try {
+    // Reuse media-check logic via direct call
+    const handler = ipcMain._invokeHandlers?.get?.('media-check');
+    if (handler) report.checks.media = await handler();
+  } catch { /* ignore */ }
+
+  // 4. PhysX
+  try {
+    const handler = ipcMain._invokeHandlers?.get?.('physx-check');
+    if (handler) report.checks.physx = await handler();
+  } catch { /* ignore */ }
+
+  // 5. DXVK status
+  report.checks.dxvkAppliedSystemDll = false;
+  try {
+    await fs.promises.access('C:\\Windows\\SysWOW64\\d9vk.dll');
+    report.checks.dxvkAppliedSystemDll = true;
+  } catch { /* not applied */ }
+
+  // 6. Crash dump status
+  const dumpOut = await regQuery(CRASHDUMP_KEY);
+  report.checks.crashDumpEnabled = !!dumpOut;
+
+  // Write report
+  await fs.promises.writeFile(
+    path.join(stagingRoot, 'report.json'),
+    JSON.stringify(report, null, 2)
+  );
+
+  // 7. Copy log files (if present)
+  const logFiles = ['DPfix.log', 'dp_d3d9.log', 'DPLauncher_d3d9.log', 'update.log'];
+  for (const lf of logFiles) {
+    try {
+      await fs.promises.copyFile(
+        path.join(gameDir, lf),
+        path.join(stagingRoot, lf)
+      );
+    } catch { /* skip */ }
+  }
+  // Copy DPfix.ini for reference
+  try {
+    await fs.promises.copyFile(
+      path.join(gameDir, 'DPfix.ini'),
+      path.join(stagingRoot, 'DPfix.ini.snapshot')
+    );
+  } catch { /* skip */ }
+  // Copy dxvk.conf if present
+  try {
+    await fs.promises.copyFile(
+      path.join(gameDir, 'dxvk.conf'),
+      path.join(stagingRoot, 'dxvk.conf.snapshot')
+    );
+  } catch { /* skip */ }
+
+  // Ask user for output location
+  const result = await dialog.showSaveDialog({
+    title: 'Save Diagnostic Package',
+    defaultPath: `DP1-Diagnostic-${stamp}.zip`,
+    filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+  });
+  if (result.canceled || !result.filePath) {
+    return { success: false, error: 'User cancelled' };
+  }
+
+  // Zip via PowerShell Compress-Archive (built into Windows)
+  const ps = `Compress-Archive -Path "${stagingRoot}\\*" -DestinationPath "${result.filePath}" -Force`;
+  const { err, stderr } = await execAsync('powershell.exe', ['-NoProfile', '-Command', ps]);
+  if (err) return { success: false, error: `zip: ${stderr || err.message}` };
+
+  // Cleanup staging
+  try { await fs.promises.rm(stagingRoot, { recursive: true, force: true }); } catch {}
+
+  return { success: true, outputPath: result.filePath, size: (await fs.promises.stat(result.filePath)).size };
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// XIDI INFO (informational helper — no auto-install)
+// ─────────────────────────────────────────────────────────────────────────────
+ipcMain.handle('xidi-open-page', async () => {
+  await shell.openExternal('https://github.com/samuelgr/Xidi');
+  return { success: true };
+});
+
+ipcMain.handle('xidi-check-installed', async (_event, { gameDir } = {}) => {
+  if (!gameDir) return { installed: false };
+  const candidates = ['winmm.dll', 'dinput.dll', 'dinput8.dll', 'Xidi.ini'];
+  const found = [];
+  for (const f of candidates) {
+    try {
+      const full = path.join(gameDir, f);
+      const stat = await fs.promises.stat(full);
+      // Skip system winmm signature — Xidi's winmm.dll is small (~100-500KB)
+      // System winmm.dll is also small, so we just report presence.
+      found.push({ name: f, sizeKB: Math.round(stat.size / 1024) });
+    } catch { /* skip */ }
+  }
+  return { installed: found.some(f => f.name === 'Xidi.ini'), files: found };
+});
+
+// End of v1.4.0 stability/diagnostics block
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FIRST-RUN PRESET PICKER (v1.4 wizard redesign)
+// Replaces individual 4GB/DXVK yes-no buttons with a single preset choice:
+//   * 'dpfix-dxvk'  → DPfix + DXVK chain (optimal, current default)
+//   * 'dxvk-only'   → DXVK without DPfix wrapper (fast load)
+//   * 'dpfix-only'  → DPfix with native System32 d3d9.dll (no Vulkan)
+// 4GB Patch is offered separately, auto-recommended when host RAM > 4GB.
+// ═════════════════════════════════════════════════════════════════════════════
+
+ipcMain.handle('system-info', async () => {
+  return {
+    totalMemoryGB: Math.round(os.totalmem() / 1024 / 1024 / 1024 * 10) / 10,
+    totalMemoryBytes: os.totalmem(),
+    cpus: os.cpus().length,
+    cpuModel: os.cpus()[0]?.model || 'unknown',
+    platform: process.platform,
+    arch: process.arch,
+    osRelease: os.release(),
+  };
+});
+
+ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {}) => {
+  if (!gameDir) return { success: false, error: 'gameDir not provided' };
+  if (!preset)  return { success: false, error: 'preset not provided' };
+
+  const steps = [];
+  const exePath = path.join(gameDir, 'DP.exe');
+
+  // 1. Apply 4GB patch if requested
+  if (with4gb) {
+    try {
+      const fd = await fs.promises.open(exePath, 'r');
+      const head = Buffer.alloc(0x200);
+      await fd.read(head, 0, 0x200, 0);
+      const eLfanew = head.readUInt32LE(0x3C);
+      const charsBuf = Buffer.alloc(2);
+      await fd.read(charsBuf, 0, 2, eLfanew + 4 + 18);
+      const chars = charsBuf.readUInt16LE(0);
+      await fd.close();
+      if (chars & 0x0020) {
+        steps.push('4GB Patch already applied');
+      } else {
+        const patchExe = path.join(gameDir, '4gb_patch.exe');
+        const localPatch = await exists(patchExe) ? patchExe :
+                           path.join(process.resourcesPath || '', '4gb_patch.exe');
+        if (await exists(localPatch)) {
+          const { err, stderr } = await execAsync(localPatch, [exePath]);
+          if (err) {
+            steps.push(`4GB Patch failed: ${stderr || err.message}`);
+          } else {
+            steps.push('4GB Patch applied ✓');
+          }
+        } else {
+          steps.push('4GB Patch skipped (patcher not found in game or resources)');
+        }
+      }
+    } catch (e) {
+      steps.push(`4GB Patch error: ${e.message}`);
+    }
+  }
+
+  // 2. Apply preset
+  const d3d9Path  = path.join(gameDir, 'd3d9.dll');
+  const d3d9Bak   = path.join(gameDir, 'd3d9.dll.bak');
+  const d9vkSys   = 'C:\\Windows\\SysWOW64\\d9vk.dll';
+
+  switch (preset) {
+    case 'dpfix-dxvk': {
+      // DPfix wrapper + DXVK chain (current full setup). Equivalent of
+      // the existing apply-dxvk-auto path.
+      const src = await findDxvkSourceDll(gameDir);
+      if (!src) { steps.push('DXVK source missing — install DXVK first'); break; }
+      try {
+        await fs.promises.copyFile(src, d9vkSys);
+        steps.push('Copied DXVK → SysWOW64\\d9vk.dll');
+      } catch (e) {
+        steps.push(`DXVK system copy failed (admin required?): ${e.message}`);
+        return { success: false, error: 'DXVK install needs admin rights', steps };
+      }
+      // Patch in-place game d3d9.dll to forward into d9vk.dll
+      try {
+        if (await exists(d3d9Path)) {
+          // backup if not already there
+          if (!await exists(d3d9Bak)) {
+            await fs.promises.copyFile(d3d9Path, d3d9Bak);
+            steps.push('Backed up game/d3d9.dll → .bak');
+          }
+          // Hex-patch "d3d9.dll" → "d9vk.dll" (8 chars each, preserves length)
+          const buf = await fs.promises.readFile(d3d9Path);
+          const needle = Buffer.from('d3d9.dll', 'ascii');
+          const replace = Buffer.from('d9vk.dll', 'ascii');
+          let count = 0;
+          for (let i = 0; i + needle.length <= buf.length; i++) {
+            let match = true;
+            for (let j = 0; j < needle.length; j++) {
+              if (buf[i + j] !== needle[j]) { match = false; break; }
+            }
+            if (match) { replace.copy(buf, i); count++; i += needle.length - 1; }
+          }
+          await fs.promises.writeFile(d3d9Path, buf);
+          steps.push(`Patched ${count} occurrence(s) of 'd3d9.dll' → 'd9vk.dll'`);
+        } else {
+          steps.push('Game d3d9.dll not found — install DPfix first');
+        }
+      } catch (e) {
+        steps.push(`Game d3d9.dll patch failed: ${e.message}`);
+      }
+      break;
+    }
+    case 'dxvk-only': {
+      // DXVK without DPfix wrapper: replace game d3d9.dll directly with DXVK's d3d9.dll
+      const src = await findDxvkSourceDll(gameDir);
+      if (!src) { steps.push('DXVK source missing'); break; }
+      try {
+        if (await exists(d3d9Path) && !await exists(d3d9Bak)) {
+          await fs.promises.copyFile(d3d9Path, d3d9Bak);
+          steps.push('Backed up DPfix d3d9.dll → .bak');
+        }
+        await fs.promises.copyFile(src, d3d9Path);
+        steps.push('Installed DXVK d3d9.dll directly (no DPfix wrapper)');
+      } catch (e) {
+        steps.push(`DXVK-only install failed: ${e.message}`);
+      }
+      // Remove SysWOW64 d9vk.dll if it was set (cleanup from previous mode)
+      try {
+        await fs.promises.unlink(d9vkSys);
+        steps.push('Removed SysWOW64\\d9vk.dll (cleanup)');
+      } catch { /* not present */ }
+      break;
+    }
+    case 'dpfix-only': {
+      // DPfix only — restore d3d9.dll from .bak (raw DPfix wrapper without DXVK chain).
+      // If .bak not present, leave d3d9.dll as-is but un-patch the 'd9vk.dll' string back.
+      try {
+        if (await exists(d3d9Bak)) {
+          await fs.promises.copyFile(d3d9Bak, d3d9Path);
+          steps.push('Restored DPfix d3d9.dll from .bak');
+        } else if (await exists(d3d9Path)) {
+          // hex-undo d9vk.dll → d3d9.dll
+          const buf = await fs.promises.readFile(d3d9Path);
+          const needle = Buffer.from('d9vk.dll', 'ascii');
+          const replace = Buffer.from('d3d9.dll', 'ascii');
+          let count = 0;
+          for (let i = 0; i + needle.length <= buf.length; i++) {
+            let match = true;
+            for (let j = 0; j < needle.length; j++) {
+              if (buf[i + j] !== needle[j]) { match = false; break; }
+            }
+            if (match) { replace.copy(buf, i); count++; i += needle.length - 1; }
+          }
+          if (count > 0) {
+            await fs.promises.writeFile(d3d9Path, buf);
+            steps.push(`Reverted ${count} hex-patch(es) inside game d3d9.dll`);
+          } else {
+            steps.push('Game d3d9.dll already DPfix-only');
+          }
+        } else {
+          steps.push('Game d3d9.dll not found — install DPfix first');
+        }
+      } catch (e) {
+        steps.push(`DPfix-only setup failed: ${e.message}`);
+      }
+      // Remove SysWOW64\d9vk.dll
+      try {
+        await fs.promises.unlink(d9vkSys);
+        steps.push('Removed SysWOW64\\d9vk.dll');
+      } catch { /* not present */ }
+      break;
+    }
+    default:
+      return { success: false, error: `Unknown preset: ${preset}` };
+  }
+
+  return { success: true, preset, steps };
+});
+
+// (findDxvkSourceDll is already defined earlier in this file at ~line 1860)
