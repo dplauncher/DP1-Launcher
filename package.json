@@ -1,11 +1,11 @@
 {
   "name": "dp1-launcher",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Deadly Premonition DPFix Launcher by «Little Bit»",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "pack": "electron-packager . \"DP1 Launcher\" --platform=win32 --arch=x64 --out=dist --overwrite --ignore=\"^/dist\" --ignore=\"^/dist2\" --ignore=\"^/.claude\" --ignore=\"^/screenshots\" --ignore=\"DPfix.ini\" --ignore=\"\\.bak$\" --app-version=1.5.1 --icon=assets/DP_LOGO.ico --extra-resource=assets/4gb_patch.exe --extra-resource=assets/d9vk.dll --extra-resource=assets/dpc_cursor_hide.ps1 --extra-resource=assets/dpc_codec_watcher.ps1",
+    "pack": "electron-packager . \"DP1 Launcher\" --platform=win32 --arch=x64 --out=dist --overwrite --ignore=\"^/dist\" --ignore=\"^/dist2\" --ignore=\"^/.claude\" --ignore=\"^/screenshots\" --ignore=\"DPfix.ini\" --ignore=\"\\.bak$\" --app-version=1.5.2 --icon=assets/DP_LOGO.ico --extra-resource=assets/4gb_patch.exe --extra-resource=assets/d9vk.dll --extra-resource=assets/dpc_cursor_hide.ps1 --extra-resource=assets/dpc_codec_watcher.ps1",
     "build": "electron-builder --win --x64",
     "build:dir": "electron-builder --win --x64 --dir"
   },

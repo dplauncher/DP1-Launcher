@@ -1,5 +1,13 @@
 [
   {
+    "title_uk":   "📦 v1.5.2 — Auto-update staging now next to .exe (no %TEMP% dependency)",
+    "title_en":   "📦 v1.5.2 — Auto-update staging now next to .exe (no %TEMP% dependency)",
+    "excerpt_uk": "Auto-update тепер качає zip і розпаковує його у `<installDir>\\.update-<ts>\\` поруч з .exe лаунчера, а не у `%TEMP%`. Same-drive robocopy → швидше. Cleanup залишається той самий (batch self-delete після успіху). Якщо install dir read-only (наприклад, Program Files без admin) — авто-fallback на `%TEMP%` як раніше. Жодних інших змін.",
+    "excerpt_en": "Auto-update now downloads and extracts the new build into `<installDir>\\.update-<ts>\\` next to the launcher .exe, instead of `%TEMP%`. Same-drive robocopy → faster. Cleanup unchanged (batch self-deletes on success). If the install dir is read-only (e.g. Program Files without admin), automatic fallback to `%TEMP%` like before. No other changes.",
+    "date":       "May 27, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v1.5.2"
+  },
+  {
     "title_uk":   "🔧 v1.5.1 — Hotfix: preset apply errors + GPU info on Win11 + layout",
     "title_en":   "🔧 v1.5.1 — Hotfix: preset apply errors + GPU info on Win11 + layout",
     "excerpt_uk": "Швидкий fix після релізу v1.5.0: (1) у `apply-preset` був ReferenceError на `exists` коли активний 4GB toggle — перенесли helper у module scope; (2) DPfix+DXVK пресет тепер pre-check'ає admin-rights і пропонує два шляхи: «Перезапустити з правами адміністратора» (UAC) або auto-fallback на DXVK-only (пише лише в теку гри, без адмін); (3) Get-CimInstance замість `wmic` для GPU detection — `wmic` deprecated/відсутній у новій Win11; (4) Stability tab overflow fix — SHA-256 у diag-pre тепер wrap'ається, long GPU names не виштовхують панель за межі вікна; (5) header «SETTINGS» нарешті локалізований. Жодних змін у логіці NaN Hang Guard чи самих пресетах.",

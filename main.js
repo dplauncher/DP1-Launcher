@@ -742,32 +742,56 @@ ipcMain.handle('apply-update', async () => {
   try {
     send('locating');
     const asset = await findLatestZipAssetUrl();
-    const tmpZip = path.join(os.tmpdir(), `dp1-update-${Date.now()}.zip`);
 
-    send('downloading', { name: asset.name, downloaded: 0, total: asset.size, speed: 0 });
-    await downloadToFile(asset.url, tmpZip, (p) => send('downloading', { ...p, name: asset.name }));
+    // v1.5.2: stage download + extraction NEXT TO the running .exe instead of
+    // %TEMP%. Same-drive robocopy is faster, the staging folder is visible
+    // alongside the launcher (so users can see what's happening), and we don't
+    // depend on %TEMP% surviving Disk Cleanup or being on the same partition.
+    const installDir = path.dirname(process.execPath);
+    const stamp = Date.now();
+    const stagingDir = path.join(installDir, `.update-${stamp}`);
+    const stagingZip = path.join(installDir, `.update-${stamp}.zip`);
 
-    const extractDir = path.join(os.tmpdir(), `dp1-update-${Date.now()}-x`);
+    try {
+      await fs.promises.mkdir(stagingDir, { recursive: true });
+    } catch (e) {
+      // Install dir not writable (e.g., Program Files without admin) — fall
+      // back to %TEMP% so the update still works. User-warn via 'staging-fallback'.
+      send('staging-fallback', { reason: e.message, fallback: os.tmpdir() });
+    }
+    const stagingWritable = await exists(stagingDir);
+    const zipPath    = stagingWritable ? stagingZip : path.join(os.tmpdir(), `dp1-update-${stamp}.zip`);
+    const extractDir = stagingWritable ? stagingDir : path.join(os.tmpdir(), `dp1-update-${stamp}-x`);
+
+    send('downloading', { name: asset.name, downloaded: 0, total: asset.size, speed: 0, stagingDir: extractDir });
+    await downloadToFile(asset.url, zipPath, (p) => send('downloading', { ...p, name: asset.name }));
+
     send('extracting');
-    await extractZip(tmpZip, extractDir);
+    await extractZip(zipPath, extractDir);
 
     // Build a batch script that swaps files + restarts the app
-    const installDir = path.dirname(process.execPath).replace(/\\/g, '\\');
+    const installDirEscaped = installDir.replace(/\\/g, '\\');
     const exeName    = path.basename(process.execPath);
-    const stamp     = Date.now();
     const batchPath = path.join(os.tmpdir(), `dp1-update-${stamp}.bat`);
     const vbsPath   = path.join(os.tmpdir(), `dp1-update-${stamp}.vbs`);
+    // Exclude the staging folder + its sibling zip from robocopy so it doesn't
+    // try to copy the extraction over itself.
+    const stagingBaseName = path.basename(extractDir);
+    const zipBaseName     = path.basename(zipPath);
+    const xdSwitches = (extractDir.startsWith(installDir + path.sep) || extractDir === installDir)
+      ? `/XD "${path.join(installDir, stagingBaseName).replace(/\\/g, '\\')}" /XF "${path.join(installDir, zipBaseName).replace(/\\/g, '\\')}"`
+      : '';
     const batch =
       '@echo off\r\n' +
       'chcp 65001 >nul\r\n' +
       'timeout /t 2 /nobreak >nul\r\n' +
       // Try up to 10 times in case the .exe is still locked
       `:retry\r\n` +
-      `robocopy "${extractDir.replace(/\\/g, '\\')}" "${installDir}" /E /R:5 /W:2 /NFL /NDL /NJH /NJS >nul\r\n` +
+      `robocopy "${extractDir.replace(/\\/g, '\\')}" "${installDirEscaped}" /E ${xdSwitches} /R:5 /W:2 /NFL /NDL /NJH /NJS >nul\r\n` +
       `if errorlevel 8 (timeout /t 1 /nobreak >nul & goto retry)\r\n` +
       `start "" "${path.join(installDir, exeName).replace(/\\/g, '\\')}"\r\n` +
       `rmdir /s /q "${extractDir.replace(/\\/g, '\\')}" >nul 2>&1\r\n` +
-      `del "${tmpZip.replace(/\\/g, '\\')}" >nul 2>&1\r\n` +
+      `del "${zipPath.replace(/\\/g, '\\')}" >nul 2>&1\r\n` +
       `del "${vbsPath.replace(/\\/g, '\\')}" >nul 2>&1\r\n` +
       `del "%~f0"\r\n`;
     await fs.promises.writeFile(batchPath, batch, { encoding: 'utf8' });
