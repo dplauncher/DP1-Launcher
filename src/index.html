@@ -723,6 +723,60 @@
               <p class="compat-note" id="xidi-note"></p>
             </details>
 
+            <!-- GPU Compatibility (v1.5) -->
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="gpuCompat.title">GPU Driver Compatibility</span>
+                <span class="fix-item-badge" id="gpu-compat-badge">—</span>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n-html="gpuCompat.help">
+                Старі AMD/Intel D3D9 драйвери можуть deadlock'ати на certain game scenes
+                (підтверджено dump-аналізом Ch.3 hospital hang). Якщо у тебе random hangs
+                <strong>не на завантаженні, а посеред gameplay</strong> — DXVK ймовірно це виправить.
+              </p>
+              <div class="fix-item-info-grid" id="gpu-list"></div>
+              <p class="compat-note" id="gpu-compat-note"></p>
+              <div class="compat-actions">
+                <button class="btn-secondary btn-compact" id="btn-gpu-rescan" data-i18n="gpuCompat.rescanBtn">
+                  Re-detect GPU
+                </button>
+                <button class="btn-primary btn-compact" id="btn-gpu-goto-presets" data-i18n="gpuCompat.gotoPresets">
+                  Switch to DXVK preset →
+                </button>
+              </div>
+            </details>
+
+            <!-- NaN Hang Guard (v1.5 EXPERIMENTAL) -->
+            <details class="fix-item experimental">
+              <summary>
+                <span class="fix-item-title" data-i18n="nanGuard.title">⚠ Experimental: NaN Hang Guard</span>
+                <span class="fix-item-badge" id="nanguard-badge">—</span>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n-html="nanGuard.help">
+                <strong>Experimental.</strong> Modifies DP.exe on disk (2 bytes, with backup).
+                Replaces an internal infinite-loop assert at VA <code>0x00409EA6</code> with
+                two NOPs so NaN float input returns <code>0.0f</code> instead of hanging the thread.
+                Pattern-scanned and SHA-256-verified — refuses if your DP.exe doesn't match.
+                Use only if you experience random AppHang freezes during Ch.3 / loading transitions.
+              </p>
+              <div class="compat-actions">
+                <button class="btn-secondary btn-compact" id="btn-nanguard-scan" data-i18n="nanGuard.scanBtn">
+                  Scan DP.exe
+                </button>
+                <button class="btn-primary btn-compact" id="btn-nanguard-apply" data-i18n="nanGuard.applyBtn" disabled>
+                  Apply Hang Guard
+                </button>
+                <button class="btn-secondary btn-compact" id="btn-nanguard-revert" data-i18n="nanGuard.revertBtn" disabled>
+                  Revert
+                </button>
+              </div>
+              <p class="compat-note" id="nanguard-note"></p>
+              <details class="diag-details" id="nanguard-diag-wrap" hidden>
+                <summary data-i18n="nanGuard.diagSummary">Patch diagnostics</summary>
+                <pre class="diag-pre" id="nanguard-diag"></pre>
+              </details>
+            </details>
+
             <!-- Diagnostic Export -->
             <h4 class="form-subhead" data-i18n="diagExport.title">Diagnostic Package Export</h4>
             <p class="settings-help" data-i18n="diagExport.help">

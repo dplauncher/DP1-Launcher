@@ -3205,3 +3205,90 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {})
 });
 
 // (findDxvkSourceDll is already defined earlier in this file at ~line 1860)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPERIMENTAL: NaN Hang Guard (v1.5.0)
+//   Pattern-scan + 2-byte runtime fix to DP.exe for the known infinite-loop
+//   assert at VA 0x00409EA6. See workers/nan_guard.js + docs/NAN_HANG_GUARD.md.
+// ─────────────────────────────────────────────────────────────────────────────
+const nanGuard = require('./workers/nan_guard.js');
+
+function dpExePath(gameDir) {
+  if (!gameDir) return null;
+  return path.join(gameDir, 'DP.exe');
+}
+
+ipcMain.handle('nan-guard-status', async (_event, { gameDir } = {}) => {
+  const exePath = dpExePath(gameDir);
+  if (!exePath) return { ok: false, status: 'no-game' };
+  return await nanGuard.analyze(exePath);
+});
+
+ipcMain.handle('nan-guard-apply', async (_event, { gameDir } = {}) => {
+  const exePath = dpExePath(gameDir);
+  if (!exePath) return { ok: false, status: 'no-game' };
+  // Refuse if game is currently running (we cannot safely modify a running binary).
+  const running = await new Promise((resolve) => {
+    require('child_process').exec(
+      'tasklist /FI "IMAGENAME eq DP.exe" /FO CSV /NH',
+      (err, stdout) => resolve(!err && /DP\.exe/i.test(stdout || ''))
+    );
+  });
+  if (running) {
+    return { ok: false, status: 'game-running', error: 'DP.exe is currently running. Close the game first.' };
+  }
+  return await nanGuard.apply(exePath);
+});
+
+ipcMain.handle('nan-guard-revert', async (_event, { gameDir } = {}) => {
+  const exePath = dpExePath(gameDir);
+  if (!exePath) return { ok: false, status: 'no-game' };
+  const running = await new Promise((resolve) => {
+    require('child_process').exec(
+      'tasklist /FI "IMAGENAME eq DP.exe" /FO CSV /NH',
+      (err, stdout) => resolve(!err && /DP\.exe/i.test(stdout || ''))
+    );
+  });
+  if (running) {
+    return { ok: false, status: 'game-running', error: 'DP.exe is currently running. Close the game first.' };
+  }
+  return await nanGuard.revert(exePath);
+});
+
+// GPU info (used by Stability tab to surface DXVK recommendation for legacy
+// AMD/Intel drivers that deadlock on D3D9 — see Tree Fan Ch.3 dump #3).
+ipcMain.handle('gpu-info', async () => {
+  return await new Promise((resolve) => {
+    require('child_process').exec(
+      'wmic path win32_VideoController get Name,DriverVersion,AdapterCompatibility /format:list',
+      { timeout: 5000 },
+      (err, stdout) => {
+        if (err || !stdout) { resolve({ ok: false, gpus: [] }); return; }
+        const blocks = stdout.split(/\r?\n\r?\n+/).map(b => b.trim()).filter(Boolean);
+        const gpus = blocks.map(block => {
+          const out = {};
+          block.split(/\r?\n/).forEach(line => {
+            const m = line.match(/^([^=]+)=(.*)$/);
+            if (m) out[m[1].trim()] = m[2].trim();
+          });
+          return out;
+        }).filter(g => g.Name);
+        // Flag legacy AMD/Intel drivers known to deadlock on DP.exe's D3D9 path.
+        const legacy = gpus.filter(g => {
+          const name = (g.Name || '').toLowerCase();
+          const vendor = (g.AdapterCompatibility || '').toLowerCase();
+          // Northern Islands / older HD-series AMD GPUs route via AMDXN32.DLL,
+          // which has the known D3D9 spinlock seen in Tree Fan's dump #3.
+          if (vendor.includes('amd') || vendor.includes('ati') || name.includes('radeon')) {
+            return /\b(hd ?[2-7]\d{3}|r[5-9] ?[2-3]\d{2}|hd ?\d{4})\b/.test(name);
+          }
+          if (vendor.includes('intel') || name.includes('intel')) {
+            return /\b(hd graphics|gma|iris|uhd graphics 6\d{2})\b/.test(name);
+          }
+          return false;
+        });
+        resolve({ ok: true, gpus, legacy });
+      }
+    );
+  });
+});

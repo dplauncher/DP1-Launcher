@@ -346,6 +346,8 @@ function activateSettingsSection(name) {
     refreshStabilityMode();
     refreshCrashdumpStatus();
     refreshPhysxStatus();
+    refreshNanGuardStatus();
+    refreshGpuInfo();
   }
   if (name === 'presets') {
     detectCurrentPreset();
@@ -3473,6 +3475,234 @@ async function onSettingsApplyPreset() {
   }
 }
 
+// ─── v1.5.0: NaN Hang Guard (experimental DP.exe patch) ───────────────────────
+function nanGuardStatusLabel(status) {
+  switch (status) {
+    case 'applied':      return t('nanGuard.statusApplied')      || '✓ Applied';
+    case 'found':        return t('nanGuard.statusFound')        || '⚙ Ready (not applied)';
+    case 'no-pattern':   return t('nanGuard.statusNoPattern')    || '? Pattern not found';
+    case 'ambiguous':    return t('nanGuard.statusAmbiguous')    || '⚠ Ambiguous match';
+    case 'no-exe':       return t('nanGuard.statusNoExe')        || '— DP.exe not found';
+    case 'no-game':      return t('nanGuard.statusNoGame')       || '— Set game path first';
+    case 'not-pe':       return t('nanGuard.statusNotPe')        || '⚠ Not a valid PE';
+    case 'game-running': return t('nanGuard.statusGameRunning')  || '⏸ Close game first';
+    case 'verify-failed':return t('nanGuard.statusVerifyFailed') || '⚠ Byte verify failed';
+    default:             return status || '?';
+  }
+}
+
+function nanGuardBadgeClass(status) {
+  if (status === 'applied') return 'fix-item-badge ok';
+  if (status === 'found')   return 'fix-item-badge';
+  return 'fix-item-badge warn';
+}
+
+async function refreshNanGuardStatus() {
+  const badge   = $('nanguard-badge');
+  const note    = $('nanguard-note');
+  const applyBtn  = $('btn-nanguard-apply');
+  const revertBtn = $('btn-nanguard-revert');
+  const diagWrap  = $('nanguard-diag-wrap');
+  const diagPre   = $('nanguard-diag');
+
+  const gameDir = getGameDir();
+  if (!gameDir) {
+    if (badge) { badge.textContent = nanGuardStatusLabel('no-game'); badge.className = 'fix-item-badge'; }
+    if (applyBtn)  applyBtn.disabled  = true;
+    if (revertBtn) revertBtn.disabled = true;
+    return;
+  }
+
+  try {
+    const r = await window.electronAPI.nanGuardStatus?.(gameDir);
+    if (!r) return;
+
+    if (badge) {
+      badge.textContent = nanGuardStatusLabel(r.status);
+      badge.className   = nanGuardBadgeClass(r.status);
+    }
+    if (applyBtn)  applyBtn.disabled  = (r.status !== 'found');
+    if (revertBtn) revertBtn.disabled = (r.status !== 'applied');
+
+    if (note) {
+      if (r.status === 'applied') {
+        note.textContent = t('nanGuard.noteApplied') || 'Patch is currently applied. Game uses 0.0f fallback instead of hanging.';
+        note.className = 'compat-note ok';
+      } else if (r.status === 'found') {
+        note.textContent = t('nanGuard.noteFound') || 'Ready to apply. Backup will be a sidecar JSON (revert anytime).';
+        note.className = 'compat-note';
+      } else if (r.status === 'no-pattern') {
+        note.textContent = t('nanGuard.noteNoPattern') || 'Pattern not found — your DP.exe is a different build (GOG/cracked/non-Steam?). Patch unsupported.';
+        note.className = 'compat-note warn';
+      } else if (r.status === 'ambiguous') {
+        note.textContent = t('nanGuard.noteAmbiguous') || 'Multiple matches — refusing to patch (unexpected binary layout).';
+        note.className = 'compat-note error';
+      } else if (r.error) {
+        note.textContent = r.error;
+        note.className = 'compat-note error';
+      } else {
+        note.textContent = '';
+        note.className = 'compat-note';
+      }
+    }
+
+    if (diagWrap && diagPre && r.ok) {
+      const lines = [
+        `SHA-256:     ${r.sha256 || '?'}`,
+        `Known good:  ${r.knownGood ? 'YES' : 'no (version drift — patch may still work if pattern matched)'}`,
+        `Image base:  0x${(r.imageBase ?? 0).toString(16).padStart(8, '0')}`,
+        `.text VA:    0x${(r.textVa ?? 0).toString(16)}`,
+        `.text raw:   0x${(r.textRawPtr ?? 0).toString(16)}`,
+        `Matches:     original=${r.originalMatches ?? 0}  patched=${r.patchedMatches ?? 0}`,
+      ];
+      if (r.fileOffset != null) lines.push(`Patch offset: 0x${r.fileOffset.toString(16)} (file)`);
+      if (r.va != null)         lines.push(`Patch VA:     0x${r.va.toString(16).padStart(8, '0')}`);
+      diagPre.textContent = lines.join('\n');
+      diagWrap.hidden = false;
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function onNanGuardApply() {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const ok = await openConfirm({
+    title: t('nanGuard.confirmApplyTitle') || 'Apply experimental NaN Hang Guard?',
+    body:  t('nanGuard.confirmApplyBody')  ||
+           'Modifies DP.exe on disk: 2 bytes at file offset 0x92A6 (VA 0x00409EA6). ' +
+           'A sidecar JSON (.nanguard.json) stores revert metadata. Game will use ' +
+           '0.0f fallback instead of hanging when an internal float helper hits NaN. ' +
+           'Reversible at any time. EXPERIMENTAL — use only if you experience hangs.',
+    okText: t('nanGuard.applyBtn') || 'Apply',
+    cancelText: t('skipIntro.confirmCancel') || 'Cancel',
+  });
+  if (!ok) return;
+
+  const note   = $('nanguard-note');
+  const apply  = $('btn-nanguard-apply');
+  const revert = $('btn-nanguard-revert');
+  if (apply)  apply.disabled  = true;
+  if (revert) revert.disabled = true;
+  if (note)   { note.textContent = '…'; note.className = 'compat-note'; }
+
+  try {
+    const r = await window.electronAPI.nanGuardApply?.(gameDir);
+    if (r?.ok) {
+      showToast(t('toast.nanGuardApplied') || 'NaN Hang Guard applied ✓', 'success');
+      logActivity('completed', `NaN Hang Guard patch applied @ 0x${(r.info?.va || 0).toString(16)}`);
+      if (note) {
+        note.textContent = r.alreadyApplied
+          ? (t('nanGuard.noteAlreadyApplied') || 'Already applied (no change).')
+          : (t('nanGuard.noteJustApplied')    || 'Patch applied. Launch the game and test.');
+        note.className = 'compat-note ok';
+      }
+    } else {
+      if (note) {
+        const msg = r?.error || nanGuardStatusLabel(r?.status);
+        note.textContent = msg;
+        note.className = 'compat-note error';
+      }
+      showToast((t('toast.nanGuardErr') || 'Error: ') + (r?.error || r?.status || ''), 'error');
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  } finally {
+    refreshNanGuardStatus();
+  }
+}
+
+async function onNanGuardRevert() {
+  const gameDir = getGameDir();
+  if (!gameDir) return;
+  const ok = await openConfirm({
+    title: t('nanGuard.confirmRevertTitle') || 'Revert NaN Hang Guard?',
+    body:  t('nanGuard.confirmRevertBody')  || 'Restores the original 2 bytes (EB FE) at the patch site and removes the sidecar JSON.',
+    okText: t('nanGuard.revertBtn') || 'Revert',
+    cancelText: t('skipIntro.confirmCancel') || 'Cancel',
+  });
+  if (!ok) return;
+
+  const note   = $('nanguard-note');
+  const apply  = $('btn-nanguard-apply');
+  const revert = $('btn-nanguard-revert');
+  if (apply)  apply.disabled  = true;
+  if (revert) revert.disabled = true;
+  if (note)   { note.textContent = '…'; note.className = 'compat-note'; }
+
+  try {
+    const r = await window.electronAPI.nanGuardRevert?.(gameDir);
+    if (r?.ok) {
+      showToast(t('toast.nanGuardReverted') || 'NaN Hang Guard reverted ✓', 'success');
+      logActivity('info', 'NaN Hang Guard reverted');
+      if (note) {
+        note.textContent = r.alreadyReverted
+          ? (t('nanGuard.noteAlreadyReverted') || 'Already reverted (no change).')
+          : (t('nanGuard.noteJustReverted')    || 'Patch reverted. DP.exe is back to its original bytes.');
+        note.className = 'compat-note ok';
+      }
+    } else {
+      if (note) {
+        note.textContent = r?.error || nanGuardStatusLabel(r?.status);
+        note.className   = 'compat-note error';
+      }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  } finally {
+    refreshNanGuardStatus();
+  }
+}
+
+// ─── v1.5.0: GPU Driver Compatibility ─────────────────────────────────────────
+async function refreshGpuInfo() {
+  const list   = $('gpu-list');
+  const note   = $('gpu-compat-note');
+  const badge  = $('gpu-compat-badge');
+  if (!list) return;
+  try {
+    const r = await window.electronAPI.gpuInfo?.();
+    list.innerHTML = '';
+    if (!r?.ok || !r.gpus?.length) {
+      list.innerHTML = `<div class="info-grid-row"><span class="info-grid-key">${t('gpuCompat.unknown') || 'GPU info unavailable'}</span></div>`;
+      if (badge) { badge.textContent = '?'; badge.className = 'fix-item-badge'; }
+      return;
+    }
+    for (const g of r.gpus) {
+      const isLegacy = r.legacy?.some(l => l.Name === g.Name);
+      const row = document.createElement('div');
+      row.className = 'info-grid-row';
+      row.innerHTML = `
+        <span class="info-grid-key">${g.Name || '?'}</span>
+        <span class="info-grid-val">${g.AdapterCompatibility || ''}${g.DriverVersion ? ` · v${g.DriverVersion}` : ''}${isLegacy ? ' · <strong style="color:#e0a02e">legacy</strong>' : ''}</span>
+      `;
+      list.appendChild(row);
+    }
+    if (badge) {
+      if (r.legacy?.length) {
+        badge.textContent = t('gpuCompat.legacyDetected') || '⚠ Legacy GPU';
+        badge.className = 'fix-item-badge warn';
+      } else {
+        badge.textContent = t('gpuCompat.ok') || '✓ Modern GPU';
+        badge.className = 'fix-item-badge ok';
+      }
+    }
+    if (note) {
+      if (r.legacy?.length) {
+        note.textContent = t('gpuCompat.recommendDxvk') ||
+          'Older AMD/Intel GPU detected. If you get random in-game hangs, switching to DXVK (Vulkan) is the most reliable fix — it bypasses the legacy D3D9 driver path entirely.';
+        note.className = 'compat-note warn';
+      } else {
+        note.textContent = '';
+        note.className = 'compat-note';
+      }
+    }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
 // Register event listeners (called from main init flow)
 function setupStabilityHandlers() {
   $('btn-stability-apply')?.addEventListener('click', onStabilityApply);
@@ -3490,6 +3720,12 @@ function setupStabilityHandlers() {
   $('btn-diag-export')?.addEventListener('click', onDiagExport);
   $('btn-settings-apply-preset')?.addEventListener('click', onSettingsApplyPreset);
   $('btn-settings-detect-preset')?.addEventListener('click', detectCurrentPreset);
+  // v1.5.0
+  $('btn-nanguard-scan')?.addEventListener('click', refreshNanGuardStatus);
+  $('btn-nanguard-apply')?.addEventListener('click', onNanGuardApply);
+  $('btn-nanguard-revert')?.addEventListener('click', onNanGuardRevert);
+  $('btn-gpu-rescan')?.addEventListener('click', refreshGpuInfo);
+  $('btn-gpu-goto-presets')?.addEventListener('click', () => activateSettingsSection('presets'));
 }
 
 // Auto-register if document ready

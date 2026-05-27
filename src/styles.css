@@ -1212,6 +1212,32 @@ html, body {
   border-radius: 4px;
   padding: 2px 8px;
 }
+.fix-item-badge.ok   { color: #6ec97a; border-color: rgba(110,201,122,0.35); background: rgba(110,201,122,0.08); }
+.fix-item-badge.warn { color: #e0a02e; border-color: rgba(224,160,46,0.35); background: rgba(224,160,46,0.08); }
+
+.compat-note.warn { color: #e0a02e; }
+
+.diag-details {
+  margin: 6px 0 0 24px;
+  font-size: 11px;
+}
+.diag-details > summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+.diag-pre {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border-1);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
 
 .fix-item-info-grid {
   margin: 6px 0 8px 24px;

@@ -123,4 +123,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   systemInfo:                ()                 => ipcRenderer.invoke('system-info'),
   applyPreset:               (gameDir, preset, with4gb) =>
                               ipcRenderer.invoke('apply-preset', { gameDir, preset, with4gb }),
+
+  // ── v1.5.0 Experimental NaN Hang Guard + GPU compatibility ─────
+  nanGuardStatus:            (gameDir)          => ipcRenderer.invoke('nan-guard-status', { gameDir }),
+  nanGuardApply:             (gameDir)          => ipcRenderer.invoke('nan-guard-apply',  { gameDir }),
+  nanGuardRevert:            (gameDir)          => ipcRenderer.invoke('nan-guard-revert', { gameDir }),
+  gpuInfo:                   ()                 => ipcRenderer.invoke('gpu-info'),
 });
