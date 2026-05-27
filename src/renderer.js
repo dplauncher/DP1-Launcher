@@ -2742,6 +2742,9 @@ async function onFirstRunApplyPreset() {
       showToast((t('fr.presetApplied') || 'Preset applied') + `: ${selected}`, 'success');
       // Auto-advance to step 3 after a brief delay so user sees the result
       setTimeout(() => setFirstRunStep(3), 1200);
+    } else if (r?.needsAdmin) {
+      if (applyBtn) applyBtn.disabled = false;
+      await handleNeedsAdmin(r.alternative || 'dxvk-only', statusEl);
     } else {
       if (statusEl) {
         statusEl.textContent = ((r?.steps || []).join('\n') + '\n' + (r?.error || 'failed')).trim();
@@ -3464,6 +3467,8 @@ async function onSettingsApplyPreset() {
       }
       showToast((t('toast.presetApplied') || 'Preset applied') + `: ${selected}`, 'success');
       logActivity('completed', `Preset applied via Settings: ${selected}`);
+    } else if (r?.needsAdmin) {
+      await handleNeedsAdmin(r.alternative || 'dxvk-only', note);
     } else {
       if (note) {
         note.textContent = ((r?.steps || []).join(' · ') + ' · ' + (r?.error || 'failed')).trim();
@@ -3472,6 +3477,53 @@ async function onSettingsApplyPreset() {
     }
   } catch (err) {
     if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+// v1.5.1: Offer the user a path forward when a preset needs SysWOW64 write
+// access but the launcher isn't elevated. Two options: relaunch as admin (UAC
+// prompt) or auto-fall back to the no-admin alternative (DXVK-only).
+async function handleNeedsAdmin(alternative, noteEl) {
+  const choice = await openConfirm({
+    title: t('admin.confirmTitle') || 'Adminstrator rights required',
+    body:  t('admin.confirmBody')  ||
+           'DPfix + DXVK preset writes a DLL to C:\\Windows\\SysWOW64, which requires Administrator. ' +
+           'Click OK to relaunch the launcher elevated (UAC prompt) and continue. ' +
+           'Cancel to fall back to the "DXVK only" preset instead, which writes only into the game folder (no admin).',
+    okText: t('admin.relaunchBtn') || 'Relaunch as Administrator',
+    cancelText: t('admin.fallbackBtn') || 'Use DXVK only',
+  });
+  if (choice) {
+    if (noteEl) { noteEl.textContent = t('admin.relaunching') || 'Relaunching elevated…'; noteEl.className = 'compat-note'; }
+    try {
+      const r = await window.electronAPI.relaunchAsAdmin?.();
+      if (!r?.ok && noteEl) {
+        noteEl.textContent = r?.error || (t('admin.relaunchFailed') || 'Relaunch failed');
+        noteEl.className = 'compat-note error';
+      }
+    } catch (err) {
+      if (noteEl) { noteEl.textContent = err.message; noteEl.className = 'compat-note error'; }
+    }
+    return;
+  }
+  // Fallback path
+  const gameDir = getGameDir();
+  if (noteEl) { noteEl.textContent = t('admin.fallingBack') || 'Falling back to DXVK only…'; noteEl.className = 'compat-note'; }
+  try {
+    const r = await window.electronAPI.applyPreset?.(gameDir, alternative, false);
+    if (r?.success) {
+      if (noteEl) {
+        noteEl.textContent = (r.steps || []).join(' · ');
+        noteEl.className = 'compat-note ok';
+      }
+      showToast((t('toast.presetApplied') || 'Preset applied') + `: ${alternative}`, 'success');
+      logActivity('completed', `Preset fallback applied: ${alternative}`);
+    } else if (noteEl) {
+      noteEl.textContent = ((r?.steps || []).join(' · ') + ' · ' + (r?.error || 'failed')).trim();
+      noteEl.className = 'compat-note error';
+    }
+  } catch (err) {
+    if (noteEl) { noteEl.textContent = err.message; noteEl.className = 'compat-note error'; }
   }
 }
 

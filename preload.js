@@ -129,4 +129,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   nanGuardApply:             (gameDir)          => ipcRenderer.invoke('nan-guard-apply',  { gameDir }),
   nanGuardRevert:            (gameDir)          => ipcRenderer.invoke('nan-guard-revert', { gameDir }),
   gpuInfo:                   ()                 => ipcRenderer.invoke('gpu-info'),
+
+  // ── v1.5.1 Elevation helpers (for DPfix+DXVK preset / SysWOW64 writes) ──
+  isAdmin:                   ()                 => ipcRenderer.invoke('is-admin'),
+  relaunchAsAdmin:           ()                 => ipcRenderer.invoke('relaunch-as-admin'),
 });

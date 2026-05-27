@@ -570,6 +570,47 @@ ipcMain.handle('launch-steam', (_event, appId) => {
 //
 // Fetches the latest non-draft, non-prerelease release from GitHub and
 // returns { hasUpdate, currentVersion, latestVersion, name, body, htmlUrl }.
+// ─────────────────────────────────────────────────────────────────────────────
+// Module-level helpers (used across IPC handlers)
+// ─────────────────────────────────────────────────────────────────────────────
+async function exists(p) {
+  try { await fs.promises.access(p); return true; } catch { return false; }
+}
+
+// Sync admin-rights check. Returns true if the launcher process is elevated.
+// `net session` requires SeIncreaseQuotaPrivilege which only Administrators
+// have; non-elevated calls exit non-zero. Fast (~50 ms) and zero deps.
+function isAdmin() {
+  try {
+    require('child_process').execSync('net session', { stdio: 'ignore', windowsHide: true });
+    return true;
+  } catch { return false; }
+}
+
+// Relaunch the current launcher executable elevated. Uses PowerShell's
+// Start-Process -Verb RunAs which triggers the UAC prompt. The original
+// (non-elevated) process exits so only the elevated one remains.
+async function relaunchAsAdmin() {
+  const exe = process.execPath;
+  const psCmd = `Start-Process -FilePath '${exe.replace(/'/g, "''")}' -Verb RunAs`;
+  return await new Promise((resolve) => {
+    require('child_process').execFile(
+      'powershell.exe',
+      ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', psCmd],
+      (err) => {
+        if (err) { resolve({ ok: false, error: err.message }); return; }
+        // Give the elevated child a moment to spawn, then exit ourselves.
+        setTimeout(() => { try { app.quit(); } catch {} }, 800);
+        resolve({ ok: true });
+      }
+    );
+  });
+}
+
+ipcMain.handle('is-admin', () => isAdmin());
+ipcMain.handle('relaunch-as-admin', () => relaunchAsAdmin());
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Pure HTTPS GET — no extra dependencies. Network failures resolve to
 // { hasUpdate: false, error } so the renderer can stay silent.
 // ─────────────────────────────────────────────
@@ -3098,14 +3139,31 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {})
     case 'dpfix-dxvk': {
       // DPfix wrapper + DXVK chain (current full setup). Equivalent of
       // the existing apply-dxvk-auto path.
+      // Pre-flight: this preset writes to C:\Windows\SysWOW64, which needs admin.
+      // Bail cleanly with an actionable error instead of letting copyFile EPERM.
+      if (!isAdmin()) {
+        return {
+          success: false,
+          error: 'NEEDS_ADMIN',
+          needsAdmin: true,
+          alternative: 'dxvk-only',
+          steps,
+        };
+      }
       const src = await findDxvkSourceDll(gameDir);
       if (!src) { steps.push('DXVK source missing — install DXVK first'); break; }
       try {
         await fs.promises.copyFile(src, d9vkSys);
         steps.push('Copied DXVK → SysWOW64\\d9vk.dll');
       } catch (e) {
-        steps.push(`DXVK system copy failed (admin required?): ${e.message}`);
-        return { success: false, error: 'DXVK install needs admin rights', steps };
+        steps.push(`DXVK system copy failed: ${e.message}`);
+        return {
+          success: false,
+          error: 'NEEDS_ADMIN',
+          needsAdmin: true,
+          alternative: 'dxvk-only',
+          steps,
+        };
       }
       // Patch in-place game d3d9.dll to forward into d9vk.dll
       try {
@@ -3257,22 +3315,23 @@ ipcMain.handle('nan-guard-revert', async (_event, { gameDir } = {}) => {
 
 // GPU info (used by Stability tab to surface DXVK recommendation for legacy
 // AMD/Intel drivers that deadlock on D3D9 — see Tree Fan Ch.3 dump #3).
+// `wmic` is deprecated and missing on newer Win11 builds; use CIM via PowerShell.
 ipcMain.handle('gpu-info', async () => {
   return await new Promise((resolve) => {
-    require('child_process').exec(
-      'wmic path win32_VideoController get Name,DriverVersion,AdapterCompatibility /format:list',
-      { timeout: 5000 },
+    const psCmd =
+      'Get-CimInstance Win32_VideoController | ' +
+      'Select-Object Name,AdapterCompatibility,DriverVersion | ' +
+      'ConvertTo-Json -Compress';
+    require('child_process').execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', psCmd],
+      { timeout: 8000, windowsHide: true },
       (err, stdout) => {
-        if (err || !stdout) { resolve({ ok: false, gpus: [] }); return; }
-        const blocks = stdout.split(/\r?\n\r?\n+/).map(b => b.trim()).filter(Boolean);
-        const gpus = blocks.map(block => {
-          const out = {};
-          block.split(/\r?\n/).forEach(line => {
-            const m = line.match(/^([^=]+)=(.*)$/);
-            if (m) out[m[1].trim()] = m[2].trim();
-          });
-          return out;
-        }).filter(g => g.Name);
+        if (err || !stdout) { resolve({ ok: false, gpus: [], error: err?.message || 'no stdout' }); return; }
+        let parsed;
+        try { parsed = JSON.parse(stdout.trim()); }
+        catch (e) { resolve({ ok: false, gpus: [], error: 'parse: ' + e.message }); return; }
+        const gpus = (Array.isArray(parsed) ? parsed : [parsed]).filter(g => g && g.Name);
         // Flag legacy AMD/Intel drivers known to deadlock on DP.exe's D3D9 path.
         const legacy = gpus.filter(g => {
           const name = (g.Name || '').toLowerCase();

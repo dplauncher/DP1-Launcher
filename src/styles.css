@@ -1236,8 +1236,22 @@ html, body {
   font-size: 11px;
   color: var(--text-2);
   white-space: pre-wrap;
-  overflow-x: auto;
+  word-break: break-all;       /* SHA-256 has no breakable chars */
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
+
+/* Defend against long GPU names / driver strings overflowing the panel. */
+.fix-item .fix-item-info-grid,
+.fix-item .info-grid-row { min-width: 0; }
+.fix-item .info-grid-key,
+.fix-item .info-grid-val { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+
+/* Keep the cascade of nested details inside .fix-item from growing parents. */
+.fix-item .compat-note,
+.fix-item .fix-item-help { min-width: 0; overflow-wrap: anywhere; }
 
 .fix-item-info-grid {
   margin: 6px 0 8px 24px;

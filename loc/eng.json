@@ -642,5 +642,13 @@
   "nanGuard.confirmRevertBody":  "Restores original 2 bytes (EB FE) at the patch site and removes the sidecar JSON.",
   "toast.nanGuardApplied":       "NaN Hang Guard applied ✓",
   "toast.nanGuardReverted":      "NaN Hang Guard reverted ✓",
-  "toast.nanGuardErr":           "NaN Hang Guard error: "
+  "toast.nanGuardErr":           "NaN Hang Guard error: ",
+
+  "admin.confirmTitle":   "Administrator rights required",
+  "admin.confirmBody":    "DPfix + DXVK preset writes a DLL to C:\\Windows\\SysWOW64, which requires Administrator. Click OK to relaunch the launcher elevated (UAC prompt) and continue. Cancel to fall back to the \"DXVK only\" preset instead, which writes only into the game folder (no admin).",
+  "admin.relaunchBtn":    "Relaunch as Administrator",
+  "admin.fallbackBtn":    "Use DXVK only",
+  "admin.relaunching":    "Relaunching elevated…",
+  "admin.fallingBack":    "Falling back to DXVK only…",
+  "admin.relaunchFailed": "Failed to relaunch elevated. Right-click the launcher icon and pick \"Run as administrator\" manually."
 }

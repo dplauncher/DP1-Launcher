@@ -654,5 +654,13 @@
   "nanGuard.confirmRevertBody":  "Відновлює оригінальні 2 байти (EB FE) у місці патча і видаляє sidecar JSON.",
   "toast.nanGuardApplied":       "NaN Hang Guard застосовано ✓",
   "toast.nanGuardReverted":      "NaN Hang Guard відкочено ✓",
-  "toast.nanGuardErr":           "Помилка NaN Hang Guard: "
+  "toast.nanGuardErr":           "Помилка NaN Hang Guard: ",
+
+  "admin.confirmTitle":   "Потрібні права адміністратора",
+  "admin.confirmBody":    "Пресет DPfix + DXVK записує DLL у C:\\Windows\\SysWOW64, для цього потрібен Administrator. Натисни OK щоб перезапустити лаунчер з підвищеними правами (вікно UAC) і продовжити. Скасуй щоб перейти на пресет «DXVK only» — він пише лише у теку гри і не потребує адмін.",
+  "admin.relaunchBtn":    "Перезапустити з правами адміністратора",
+  "admin.fallbackBtn":    "Використати DXVK only",
+  "admin.relaunching":    "Перезапуск з підвищеними правами…",
+  "admin.fallingBack":    "Перемикаюся на DXVK only…",
+  "admin.relaunchFailed": "Не вдалося перезапустити з адмін-правами. Правий клік на іконку лаунчера → «Запуск від імені адміністратора»."
 }
