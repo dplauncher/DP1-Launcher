@@ -1,5 +1,13 @@
 [
   {
+    "title_uk":   "🌐 v1.5.4 — i18n fixes: button labels re-localize on language switch + missing strings",
+    "title_en":   "🌐 v1.5.4 — i18n fixes: button labels re-localize on language switch + missing strings",
+    "excerpt_uk": "Кнопки які пишуть текст через JS (наприклад «Відкрити панель NVIDIA», status-pill'и Stability/NaN Guard/GPU compatibility) тепер re-localize'аються при перемиканні мови — `applyLang()` тепер emit'ить custom event `dp1-language-changed`, на який слухає renderer і re-run'ить усі dynamic-text refresh handlers. До v1.5.4 ці кнопки лишались на тій мові, що була активна при першому завантаженні. Plus: i18n додано для `Display`, `Pause`, `Setup Required`, `Game Ready`, app title; виправлено напівукраїнський `fpsCap.openGpuVendor` («Відкрити панель {vendor}» замість «Відкрити {vendor} Control Panel»).",
+    "excerpt_en": "Buttons that set their text via JS (e.g. «Open NVIDIA panel», Stability/NaN Guard/GPU compatibility status pills) now re-localize on language switch — `applyLang()` dispatches a `dp1-language-changed` custom event, which the renderer listens for to re-run every dynamic-text refresh handler. Before v1.5.4 these buttons stayed in whatever language was active at first load. Plus: i18n added for `Display`, `Pause`, `Setup Required`, `Game Ready`, app title; fixed the half-Ukrainian `fpsCap.openGpuVendor` string («Відкрити панель {vendor}» instead of «Відкрити {vendor} Control Panel»).",
+    "date":       "May 27, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v1.5.4"
+  },
+  {
     "title_uk":   "🚨 v1.5.3 — CRITICAL: fixes startup crash in 1.5.1/1.5.2",
     "title_en":   "🚨 v1.5.3 — CRITICAL: fixes startup crash in 1.5.1/1.5.2",
     "excerpt_uk": "У v1.5.1 і v1.5.2 main.js падав при старті з 'Attempted to register a second handler for is-admin' — я не помітив що існуючий handler був у файлі з раніших версій. Через це жоден IPC handler ПІСЛЯ дублікату не реєструвався, включно з apply-preset. Якщо ти бачив 'No handler registered for apply-preset' або помилку JavaScript при запуску — це ВОНО. У v1.5.3 дублікат прибрано, `isAdmin()` тепер async (більше не блокує event loop), renderer адаптовано під існуючий return shape. Оновлюй якомога швидше — попередні дві версії broken.",

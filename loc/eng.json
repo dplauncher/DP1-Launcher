@@ -651,5 +651,12 @@
   "admin.relaunching":    "Relaunching elevated…",
   "admin.fallingBack":    "Falling back to DXVK only…",
   "admin.relaunchFailed":  "Failed to relaunch elevated. Right-click the launcher icon and pick \"Run as administrator\" manually.",
-  "admin.relaunchDeclined":"UAC prompt was declined. To use the DPfix + DXVK preset, retry and accept the UAC prompt — or pick \"Use DXVK only\" next time."
+  "admin.relaunchDeclined":"UAC prompt was declined. To use the DPfix + DXVK preset, retry and accept the UAC prompt — or pick \"Use DXVK only\" next time.",
+
+  "about.appTitle":         "Deadly Premonition · Fan Launcher",
+  "dash.update.pauseBtn":   "Pause",
+  "graphics.displayHeader": "Display",
+  "status.setupRequired":   "Setup Required",
+  "status.gameReady":       "Game Ready",
+  "saves.autoActive":       "Auto-backup active ✓"
 }

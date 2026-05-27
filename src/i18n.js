@@ -77,4 +77,10 @@ function applyLang(lang) {
   // Update toggle button label to show the OTHER language (the one you'd switch to)
   const btn = document.getElementById('btn-lang');
   if (btn) btn.textContent = lang === 'uk' ? 'EN' : 'UA';
+
+  // Notify any imperative text setters (refreshFpsCapStatus, refreshGpuInfo,
+  // refreshNanGuardStatus, …) that they need to re-localize. The static
+  // data-i18n attributes above are already done; this event covers buttons /
+  // status pills whose text is written by JS at runtime with t() + substitution.
+  document.dispatchEvent(new CustomEvent('dp1-language-changed', { detail: { lang } }));
 }

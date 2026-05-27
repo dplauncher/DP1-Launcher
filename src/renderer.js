@@ -514,7 +514,7 @@ async function autoFindIni() {
     const result = await window.electronAPI.findIni();
     if (result.needsSetup) {
       const st = $('status-text');
-      if (st) st.textContent = 'Setup Required';
+      if (st) st.textContent = t('status.setupRequired') || 'Setup Required';
       $('status-dot')?.classList.add('error');
       return;
     }
@@ -535,7 +535,7 @@ async function loadIni(filePath) {
     state.iniLines  = result.lines;
     state.iniValues = result.values;
     syncUIFromValues(result.values);
-    $('status-text').textContent = 'Game Ready';
+    $('status-text').textContent = t('status.gameReady') || 'Game Ready';
     $('status-dot')?.classList.remove('error');
     $('status-dot')?.classList.add('ok');
     await persistSettings({ lastIniPath: filePath });
@@ -1459,7 +1459,7 @@ async function onGamePathChanged() {
       await window.electronAPI.autosaveStop?.();
       await window.electronAPI.autosaveStart(gameDir, 120000);
       const note = $('autosave-note');
-      if (note) { note.textContent = 'Auto-backup активне ✓'; note.className = 'compat-note ok'; }
+      if (note) { note.textContent = t('saves.autoActive') || 'Auto-backup active ✓'; note.className = 'compat-note ok'; }
     }
   } catch { /* ignore */ }
 }
@@ -1773,7 +1773,7 @@ async function restoreAutosaveState() {
       const gameDir = state.gamePath.replace(/[^\\\/]*$/, '').replace(/[\\\/]$/, '');
       await window.electronAPI.autosaveStart(gameDir, 120000);
       const note = $('autosave-note');
-      if (note) { note.textContent = 'Auto-backup активне ✓'; note.className = 'compat-note ok'; }
+      if (note) { note.textContent = t('saves.autoActive') || 'Auto-backup active ✓'; note.className = 'compat-note ok'; }
       // Persist the default-on state on first run
       if (saved.autosaveEnabled === undefined) {
         await persistSettings({ autosaveEnabled: true });
@@ -3790,4 +3790,27 @@ if (document.readyState === 'loading') {
 } else {
   setupStabilityHandlers();
 }
+
+// v1.5.4: re-run every imperative text setter when language changes. Handlers
+// that write text via `el.textContent = t(...)` do not get refreshed by
+// applyLang() — only [data-i18n] attribute-driven elements do. We listen for
+// the custom event emitted by i18n.applyLang and invoke each refresh fn that
+// is safe to call repeatedly (idempotent + cheap).
+document.addEventListener('dp1-language-changed', () => {
+  try { refreshFpsCapStatus?.(); }       catch {}
+  try { refreshGpuInfo?.(); }            catch {}
+  try { refreshNanGuardStatus?.(); }     catch {}
+  try { refreshStabilityMode?.(); }      catch {}
+  try { refreshCrashdumpStatus?.(); }    catch {}
+  try { refreshPhysxStatus?.(); }        catch {}
+  try { refreshDxvkRevertStatus?.(); }   catch {}
+  try { refreshDxvkCacheStatus?.(); }    catch {}
+  try { refreshCodecFixStatus?.(); }     catch {}
+  try { refreshCursorHideStatus?.(); }   catch {}
+  try { refreshCaptureCursorStatus?.(); }catch {}
+  try { refreshSkipIntroStatus?.(); }    catch {}
+  try { refreshCompatStatus?.(); }       catch {}
+  try { refreshDxvkToggleStatus?.(); }   catch {}
+  try { detectCurrentPreset?.(); }       catch {}
+});
 

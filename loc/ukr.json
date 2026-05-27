@@ -165,7 +165,7 @@
   "fpsCap.help":          "Движок DPC ламається на FPS &gt; 60 (фізика, скрипти). Найнадійніший спосіб обмежити — у панелі твого GPU. dxvk.conf не завжди працює, тому ми лишили тільки прямий шлях через драйвер.",
   "fpsCap.label":         "FPS-cap 60",
   "fpsCap.openGpu":       "Відкрити панель GPU",
-  "fpsCap.openGpuVendor": "Відкрити {vendor} Control Panel",
+  "fpsCap.openGpuVendor": "Відкрити панель {vendor}",
   "fpsCap.gpuOpenedHint": "Панель {vendor} відкрита. Виконай кроки вище.",
   "fpsCap.steps.nvidia.1": "Перейди на вкладку <b>Програмні налаштування</b>",
   "fpsCap.steps.nvidia.2": "Натисни <b>Додати</b> і вибери <code>DeadlyPremonition.exe</code> (якщо ще немає у списку)",
@@ -663,5 +663,12 @@
   "admin.relaunching":    "Перезапуск з підвищеними правами…",
   "admin.fallingBack":    "Перемикаюся на DXVK only…",
   "admin.relaunchFailed":   "Не вдалося перезапустити з адмін-правами. Правий клік на іконку лаунчера → «Запуск від імені адміністратора».",
-  "admin.relaunchDeclined": "UAC скасовано. Щоб застосувати пресет DPfix + DXVK — спробуй ще раз і прийми UAC, або обери «Використати DXVK only»."
+  "admin.relaunchDeclined": "UAC скасовано. Щоб застосувати пресет DPfix + DXVK — спробуй ще раз і прийми UAC, або обери «Використати DXVK only».",
+
+  "about.appTitle":         "Deadly Premonition · Фанатський лаунчер",
+  "dash.update.pauseBtn":   "Пауза",
+  "graphics.displayHeader": "Дисплей",
+  "status.setupRequired":   "Потрібне налаштування",
+  "status.gameReady":       "Гра готова",
+  "saves.autoActive":       "Авто-бекап активний ✓"
 }
