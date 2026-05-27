@@ -572,43 +572,24 @@ ipcMain.handle('launch-steam', (_event, appId) => {
 // returns { hasUpdate, currentVersion, latestVersion, name, body, htmlUrl }.
 // ─────────────────────────────────────────────────────────────────────────────
 // Module-level helpers (used across IPC handlers)
+// Note: the canonical `is-admin` and `relaunch-as-admin` IPC handlers live
+// at ~line 2084 (async exec-based, doesn't block the event loop). `isAdmin()`
+// here is the same logic exposed for direct use from other handlers, such as
+// `apply-preset`'s DPfix+DXVK pre-flight check.
 // ─────────────────────────────────────────────────────────────────────────────
 async function exists(p) {
   try { await fs.promises.access(p); return true; } catch { return false; }
 }
 
-// Sync admin-rights check. Returns true if the launcher process is elevated.
-// `net session` requires SeIncreaseQuotaPrivilege which only Administrators
-// have; non-elevated calls exit non-zero. Fast (~50 ms) and zero deps.
-function isAdmin() {
-  try {
-    require('child_process').execSync('net session', { stdio: 'ignore', windowsHide: true });
-    return true;
-  } catch { return false; }
-}
-
-// Relaunch the current launcher executable elevated. Uses PowerShell's
-// Start-Process -Verb RunAs which triggers the UAC prompt. The original
-// (non-elevated) process exits so only the elevated one remains.
-async function relaunchAsAdmin() {
-  const exe = process.execPath;
-  const psCmd = `Start-Process -FilePath '${exe.replace(/'/g, "''")}' -Verb RunAs`;
+async function isAdmin() {
   return await new Promise((resolve) => {
-    require('child_process').execFile(
-      'powershell.exe',
-      ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', psCmd],
-      (err) => {
-        if (err) { resolve({ ok: false, error: err.message }); return; }
-        // Give the elevated child a moment to spawn, then exit ourselves.
-        setTimeout(() => { try { app.quit(); } catch {} }, 800);
-        resolve({ ok: true });
-      }
+    require('child_process').exec(
+      'net session',
+      { windowsHide: true },
+      (err) => resolve(!err)
     );
   });
 }
-
-ipcMain.handle('is-admin', () => isAdmin());
-ipcMain.handle('relaunch-as-admin', () => relaunchAsAdmin());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure HTTPS GET — no extra dependencies. Network failures resolve to
@@ -3165,7 +3146,7 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {})
       // the existing apply-dxvk-auto path.
       // Pre-flight: this preset writes to C:\Windows\SysWOW64, which needs admin.
       // Bail cleanly with an actionable error instead of letting copyFile EPERM.
-      if (!isAdmin()) {
+      if (!(await isAdmin())) {
         return {
           success: false,
           error: 'NEEDS_ADMIN',

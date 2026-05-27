@@ -3497,8 +3497,12 @@ async function handleNeedsAdmin(alternative, noteEl) {
     if (noteEl) { noteEl.textContent = t('admin.relaunching') || 'Relaunching elevated…'; noteEl.className = 'compat-note'; }
     try {
       const r = await window.electronAPI.relaunchAsAdmin?.();
-      if (!r?.ok && noteEl) {
-        noteEl.textContent = r?.error || (t('admin.relaunchFailed') || 'Relaunch failed');
+      // Handler returns { accepted: true/false } — on accepted, app quits
+      // immediately so this assignment never reaches the user. On declined
+      // we drop back to the regular UI.
+      const ok = r?.accepted === true || r?.ok === true;
+      if (!ok && noteEl) {
+        noteEl.textContent = r?.error || (t('admin.relaunchDeclined') || t('admin.relaunchFailed') || 'UAC declined.');
         noteEl.className = 'compat-note error';
       }
     } catch (err) {

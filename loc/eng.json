@@ -650,5 +650,6 @@
   "admin.fallbackBtn":    "Use DXVK only",
   "admin.relaunching":    "Relaunching elevated…",
   "admin.fallingBack":    "Falling back to DXVK only…",
-  "admin.relaunchFailed": "Failed to relaunch elevated. Right-click the launcher icon and pick \"Run as administrator\" manually."
+  "admin.relaunchFailed":  "Failed to relaunch elevated. Right-click the launcher icon and pick \"Run as administrator\" manually.",
+  "admin.relaunchDeclined":"UAC prompt was declined. To use the DPfix + DXVK preset, retry and accept the UAC prompt — or pick \"Use DXVK only\" next time."
 }

@@ -1,5 +1,13 @@
 [
   {
+    "title_uk":   "🚨 v1.5.3 — CRITICAL: fixes startup crash in 1.5.1/1.5.2",
+    "title_en":   "🚨 v1.5.3 — CRITICAL: fixes startup crash in 1.5.1/1.5.2",
+    "excerpt_uk": "У v1.5.1 і v1.5.2 main.js падав при старті з 'Attempted to register a second handler for is-admin' — я не помітив що існуючий handler був у файлі з раніших версій. Через це жоден IPC handler ПІСЛЯ дублікату не реєструвався, включно з apply-preset. Якщо ти бачив 'No handler registered for apply-preset' або помилку JavaScript при запуску — це ВОНО. У v1.5.3 дублікат прибрано, `isAdmin()` тепер async (більше не блокує event loop), renderer адаптовано під існуючий return shape. Оновлюй якомога швидше — попередні дві версії broken.",
+    "excerpt_en": "v1.5.1 and v1.5.2 main.js crashed on startup with 'Attempted to register a second handler for is-admin' — I missed that the existing handler had been in the file since an earlier version. As a result no IPC handler registered AFTER the duplicate, including apply-preset. If you saw 'No handler registered for apply-preset' or a JavaScript error popup on launch — that was it. v1.5.3 removes the duplicate, makes `isAdmin()` async (no longer blocks the event loop), and adapts the renderer to the existing handler's return shape. Update ASAP — the two previous versions are broken.",
+    "date":       "May 27, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v1.5.3"
+  },
+  {
     "title_uk":   "📦 v1.5.2 — Auto-update staging now next to .exe (no %TEMP% dependency)",
     "title_en":   "📦 v1.5.2 — Auto-update staging now next to .exe (no %TEMP% dependency)",
     "excerpt_uk": "Auto-update тепер качає zip і розпаковує його у `<installDir>\\.update-<ts>\\` поруч з .exe лаунчера, а не у `%TEMP%`. Same-drive robocopy → швидше. Cleanup залишається той самий (batch self-delete після успіху). Якщо install dir read-only (наприклад, Program Files без admin) — авто-fallback на `%TEMP%` як раніше. Жодних інших змін.",
