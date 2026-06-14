@@ -363,32 +363,314 @@ function getGameDir() {
   return state.gamePath.replace(/[^\\\/]*$/, '').replace(/[\\\/]$/, '');
 }
 
+// ═════════════════════════════════════════════
+// Graphics presets — built-in + user-defined
+// ═════════════════════════════════════════════
+const GFX_BUILTIN_PRESETS = {
+  balanced: {
+    label:    'Balanced',
+    desc:     'Збалансована якість та продуктивність',
+    settings: {
+      'aa-quality':       '2',
+      'aa-type':          'SMAA',
+      'filtering':        '0',
+      'shadow-scale':     '1',
+      'shadow-precision': false,
+      'reflect-scale':    '1',
+      'improve-dof':      false,
+      'dof-blur':         '0',
+      'ssao-strength':    '1',
+      'ssao-scale':       '1',
+      'ssao-type':        'VSSAO',
+      'tex-dump':         false,
+      'tex-override':     false,
+    },
+  },
+  performance: {
+    label:    'Performance',
+    desc:     'Максимум FPS, мінімум ефектів',
+    settings: {
+      'aa-quality':       '0',
+      'aa-type':          'SMAA',
+      'filtering':        '0',
+      'shadow-scale':     '1',
+      'shadow-precision': false,
+      'reflect-scale':    '1',
+      'improve-dof':      false,
+      'dof-blur':         '0',
+      'ssao-strength':    '0',
+      'ssao-scale':       '2',
+      'ssao-type':        'VSSAO',
+      'tex-dump':         false,
+      'tex-override':     false,
+    },
+  },
+  quality: {
+    label:    'Quality',
+    desc:     'Максимальна якість графіки',
+    settings: {
+      'aa-quality':       '4',
+      'aa-type':          'SMAA',
+      'filtering':        '2',
+      'shadow-scale':     '4',
+      'shadow-precision': true,
+      'reflect-scale':    '4',
+      'improve-dof':      true,
+      'dof-blur':         '1',
+      'ssao-strength':    '3',
+      'ssao-scale':       '1',
+      'ssao-type':        'VSSAO2',
+      'tex-dump':         false,
+      'tex-override':     false,
+    },
+  },
+};
+
+const gfxProfileState = {
+  active:        'balanced',
+  customPresets: {},     // { [name]: { 'aa-quality': '2', ... } }
+};
+
+const GFX_FIELD_IDS = [
+  'aa-quality', 'aa-type', 'filtering', 'shadow-scale', 'shadow-precision',
+  'reflect-scale', 'improve-dof', 'dof-blur', 'ssao-strength', 'ssao-scale',
+  'ssao-type', 'tex-dump', 'tex-override',
+];
+
+function readGfxSnapshot() {
+  const snap = {};
+  GFX_FIELD_IDS.forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    snap[id] = (el.type === 'checkbox') ? !!el.checked : el.value;
+  });
+  return snap;
+}
+
+function applyGfxSnapshot(snap) {
+  if (!snap) return;
+  GFX_FIELD_IDS.forEach((id) => {
+    if (!(id in snap)) return;
+    const el = $(id);
+    if (!el) return;
+    if (el.type === 'checkbox') {
+      el.checked = !!snap[id];
+    } else {
+      el.value = snap[id];
+    }
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+function setupGfxProfilePicker() {
+  const trigger = $('gfx-profile-trigger');
+  const menu    = $('gfx-profile-menu');
+  const saveBtn = $('btn-gfx-save-preset');
+  if (!trigger || !menu) return;
+
+  const openMenu = () => {
+    menu.classList.remove('hidden');
+    trigger.setAttribute('aria-expanded', 'true');
+    renderGfxProfileMenu();
+  };
+  const closeMenu = () => {
+    menu.classList.add('hidden');
+    trigger.setAttribute('aria-expanded', 'false');
+  };
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menu.classList.contains('hidden')) openMenu();
+    else closeMenu();
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.classList.contains('hidden') &&
+        !menu.contains(e.target) &&
+        !trigger.contains(e.target)) {
+      closeMenu();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !menu.classList.contains('hidden')) closeMenu();
+  });
+
+  saveBtn?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const name = (window.prompt(t('gfx.savePresetPrompt') || 'Назва пресету:') || '').trim();
+    if (!name) return;
+    // Don't allow overriding built-in names
+    if (GFX_BUILTIN_PRESETS[name.toLowerCase()]) {
+      showToast(t('gfx.presetNameReserved') || 'Це ім\'я зарезервоване для стандартного пресету.', 'warn');
+      return;
+    }
+    gfxProfileState.customPresets[name] = readGfxSnapshot();
+    gfxProfileState.active = name;
+    await persistSettings({
+      gfxProfile:        name,
+      gfxCustomPresets:  gfxProfileState.customPresets,
+    });
+    updateGfxProfileLabel();
+    renderGfxProfileMenu();
+    showToast((t('gfx.presetSaved') || 'Пресет збережено: ') + name, 'success');
+  });
+
+  loadGfxProfileState();
+}
+
+async function loadGfxProfileState() {
+  try {
+    const s = await window.electronAPI.settingsRead?.();
+    if (s?.gfxProfile)        gfxProfileState.active = s.gfxProfile;
+    if (s?.gfxCustomPresets)  gfxProfileState.customPresets = s.gfxCustomPresets;
+  } catch {}
+  updateGfxProfileLabel();
+}
+
+function updateGfxProfileLabel() {
+  const el = $('gfx-profile-value');
+  if (!el) return;
+  const active = gfxProfileState.active;
+  if (GFX_BUILTIN_PRESETS[active]) {
+    el.textContent = GFX_BUILTIN_PRESETS[active].label;
+  } else if (gfxProfileState.customPresets[active]) {
+    el.textContent = active;
+  } else {
+    el.textContent = 'Custom';
+  }
+}
+
+function renderGfxProfileMenu() {
+  const ulBuiltin = $('gfx-profile-list-builtin');
+  const ulCustom  = $('gfx-profile-list-custom');
+  const customHead = $('gfx-profile-custom-head');
+  if (!ulBuiltin || !ulCustom) return;
+
+  // Built-in presets
+  ulBuiltin.innerHTML = '';
+  Object.entries(GFX_BUILTIN_PRESETS).forEach(([key, p]) => {
+    ulBuiltin.appendChild(buildProfileItem(key, p.label, p.desc, false));
+  });
+
+  // Custom presets
+  ulCustom.innerHTML = '';
+  const customKeys = Object.keys(gfxProfileState.customPresets);
+  if (customKeys.length === 0) {
+    customHead.style.display = 'none';
+  } else {
+    customHead.style.display = '';
+    customKeys.forEach((name) => {
+      ulCustom.appendChild(buildProfileItem(name, name, '', true));
+    });
+  }
+}
+
+function buildProfileItem(key, label, desc, isCustom) {
+  const li = document.createElement('li');
+  li.className = 'gfx-profile-item';
+  if (gfxProfileState.active === key) li.classList.add('active');
+
+  const nameWrap = document.createElement('span');
+  nameWrap.className = 'gfx-profile-item-name';
+  const nameStrong = document.createElement('span');
+  nameStrong.textContent = label;
+  nameWrap.appendChild(nameStrong);
+  if (desc) {
+    const d = document.createElement('div');
+    d.className = 'gfx-profile-item-desc';
+    d.textContent = desc;
+    nameWrap.appendChild(d);
+  }
+
+  const tick = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  tick.setAttribute('class', 'gfx-profile-item-tick');
+  tick.setAttribute('viewBox', '0 0 24 24');
+  tick.setAttribute('fill', 'none');
+  tick.setAttribute('stroke', 'currentColor');
+  tick.setAttribute('stroke-width', '2.2');
+  tick.setAttribute('stroke-linecap', 'round');
+  tick.setAttribute('stroke-linejoin', 'round');
+  tick.innerHTML = '<path d="M5 12l5 5 9-10"/>';
+
+  li.appendChild(nameWrap);
+  li.appendChild(tick);
+
+  if (isCustom) {
+    const del = document.createElement('button');
+    del.className = 'gfx-profile-item-del';
+    del.title = t('gfx.deletePreset') || 'Видалити';
+    del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+    del.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      delete gfxProfileState.customPresets[key];
+      if (gfxProfileState.active === key) {
+        gfxProfileState.active = 'balanced';
+        applyGfxSnapshot(GFX_BUILTIN_PRESETS.balanced.settings);
+        updateGfxProfileLabel();
+      }
+      await persistSettings({
+        gfxProfile:        gfxProfileState.active,
+        gfxCustomPresets:  gfxProfileState.customPresets,
+      });
+      renderGfxProfileMenu();
+    });
+    li.appendChild(del);
+  }
+
+  li.addEventListener('click', async () => {
+    const snap = isCustom
+      ? gfxProfileState.customPresets[key]
+      : GFX_BUILTIN_PRESETS[key]?.settings;
+    if (!snap) return;
+    applyGfxSnapshot(snap);
+    gfxProfileState.active = key;
+    await persistSettings({ gfxProfile: key });
+    updateGfxProfileLabel();
+    renderGfxProfileMenu();
+    $('gfx-profile-menu')?.classList.add('hidden');
+    $('gfx-profile-trigger')?.setAttribute('aria-expanded', 'false');
+    showToast((t('gfx.presetApplied') || 'Пресет застосовано: ') + label, 'success');
+  });
+
+  return li;
+}
+
 async function refreshDxvkRevertStatus() {
   const statusEl = $('dxvk-revert-status');
+  const pillEl   = $('dxvk-revert-status-pill');
   const btn      = $('btn-dxvk-revert');
   const note     = $('dxvk-revert-note');
   if (!btn) return;
 
+  const setPill = (state, label) => {
+    if (statusEl) statusEl.textContent = label;
+    if (pillEl) {
+      pillEl.classList.remove('is-applied', 'is-error');
+      if (state === 'applied') pillEl.classList.add('is-applied');
+      if (state === 'error')   pillEl.classList.add('is-error');
+    }
+  };
+
   const gameDir = getGameDir();
   if (!gameDir) {
     btn.disabled = true;
-    if (statusEl) { statusEl.textContent = t('dxvkRevert.notApplied'); statusEl.className = 'compat-status'; }
-    if (note)     { note.textContent = t('dxvkRevert.noGame'); note.className = 'compat-note'; }
+    setPill('default', t('dxvkRevert.notApplied'));
+    if (note) { note.textContent = t('dxvkRevert.noGame'); note.className = 'compat-note'; }
     return;
   }
 
   try {
     const r = await window.electronAPI.checkDxvkApplied?.(gameDir);
     if (r?.applied) {
-      if (statusEl) { statusEl.textContent = t('dxvkRevert.applied'); statusEl.className = 'compat-status ok'; }
+      setPill('applied', t('dxvkRevert.applied'));
       btn.disabled = false;
       if (note) { note.textContent = ''; note.className = 'compat-note'; }
     } else {
-      if (statusEl) { statusEl.textContent = t('dxvkRevert.notApplied'); statusEl.className = 'compat-status'; }
+      setPill('default', t('dxvkRevert.notApplied'));
       btn.disabled = true;
       if (note) { note.textContent = ''; note.className = 'compat-note'; }
     }
   } catch (err) {
+    setPill('error', err.message);
     if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
   }
 }
@@ -443,14 +725,54 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       await window.electronAPI.activityClear?.();
       renderActivity();
-      showToast('Журнал очищено ✓', 'success');
+      showToast(t('toast.logCleared'), 'success');
     } catch (err) {
-      showToast('Помилка очистки: ' + err.message, 'error');
+      showToast(t('toast.logClearErr') + err.message, 'error');
     }
   });
 
   // Settings → Graphics → Fully revert DXVK
   $('btn-dxvk-revert')?.addEventListener('click', onDxvkRevertClick);
+
+  // Settings → About → check for updates (reuses the existing update flow)
+  $('btn-about-check-update')?.addEventListener('click', () => {
+    showToast(t('toast.checkingUpdates') || 'Checking for updates…', 'info');
+    if (typeof checkForUpdates === 'function') checkForUpdates(true);
+  });
+
+  // Generic external-link rows (About → Quick links etc.):
+  // any element with [data-link] opens in the system default browser.
+  document.querySelectorAll('[data-link]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const url = el.dataset.link;
+      if (url && window.electronAPI?.openExternal) {
+        window.electronAPI.openExternal(url);
+      }
+    });
+  });
+
+  // Settings → Presets → "Детальніше про пресети" help-card
+  $('presets-help-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.electronAPI?.openExternal?.('https://github.com/dplauncher/DP1-Launcher#presets');
+  });
+
+  // Settings → Graphics → profile picker (built-in + custom presets)
+  setupGfxProfilePicker();
+
+  // Generic copy-to-clipboard for buttons with [data-copy-target]
+  document.querySelectorAll('.settings-copy-btn[data-copy-target]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const target = document.getElementById(btn.dataset.copyTarget);
+      if (!target) return;
+      const text = target.textContent || '';
+      try { await navigator.clipboard.writeText(text); }
+      catch { /* clipboard API blocked — silent */ }
+      btn.classList.add('is-copied');
+      setTimeout(() => btn.classList.remove('is-copied'), 1400);
+    });
+  });
 
   // Settings → About → Reset everything
   $('btn-reset-all')?.addEventListener('click', async () => {
@@ -466,7 +788,7 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast(t('toast.resetDone'), 'success');
       setTimeout(() => window.electronAPI.relaunchApp?.(), 800);
     } catch (err) {
-      showToast('Reset failed: ' + err.message, 'error');
+      showToast(t('toast.resetFailed') + err.message, 'error');
     }
   });
 });
@@ -713,6 +1035,8 @@ async function setupCompatBlock() {
 
   $('skip-intro-toggle')?.addEventListener('change', onSkipIntroToggle);
   $('btn-open-gpu-settings')?.addEventListener('click', onOpenGpuSettings);
+  $('btn-open-sound-playback')?.addEventListener('click',  () => openSoundPanel('playback'));
+  $('btn-open-sound-recording')?.addEventListener('click', () => openSoundPanel('recording'));
   $('codec-fix-toggle')?.addEventListener('change',   onCodecFixToggle);
   $('dxvk-toggle')?.addEventListener('change',        onDxvkToggle);
   $('cursor-hide-toggle')?.addEventListener('change', onCursorHideToggle);
@@ -852,6 +1176,26 @@ async function refreshFpsCapStatus() {
     }
 
     if (note) { note.textContent = ''; note.className = 'compat-note'; }
+  } catch (err) {
+    if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
+  }
+}
+
+async function openSoundPanel(tab) {
+  const note = $('surround-note');
+  try {
+    const r = await window.electronAPI.openSoundSettings?.(tab);
+    if (r?.success) {
+      if (note) {
+        note.textContent = (tab === 'recording'
+          ? t('surround.noteOpenedRecording') || 'Recording devices відкрито у Windows ✓'
+          : t('surround.noteOpenedPlayback')  || 'Налаштування звуку відкрито у Windows ✓');
+        note.className = 'compat-note ok';
+      }
+    } else if (note) {
+      note.textContent = (r?.error || 'failed');
+      note.className = 'compat-note error';
+    }
   } catch (err) {
     if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
   }
@@ -1400,9 +1744,9 @@ async function refreshCompatStatus() {
 function setCompatStatus(id, status) {
   const el = $(id);
   if (!el) return;
-  if      (status === 'xpsp3') { el.textContent = '✓ XP SP3';      el.className = 'compat-status ok'; }
-  else if (status === 'win98') { el.textContent = '✓ Win 98 / Me'; el.className = 'compat-status ok'; }
-  else                          { el.textContent = '— not set';     el.className = 'compat-status'; }
+  if      (status === 'xpsp3') { el.textContent = t('compat.statusXP');     el.className = 'compat-status ok'; }
+  else if (status === 'win98') { el.textContent = t('compat.statusWin98');  el.className = 'compat-status ok'; }
+  else                          { el.textContent = t('compat.statusNotSet'); el.className = 'compat-status'; }
 }
 
 async function toggleCompat(mode) {
@@ -1481,8 +1825,8 @@ async function refreshDxvkStatus() {
   try {
     const ok = await window.electronAPI.checkDxvk();
     const el = $('dxvk-status');
-    if (ok) { el.textContent = '✓ installed';  el.classList.add('ok'); $('btn-dxvk-uninstall').disabled = !state.isAdmin; }
-    else    { el.textContent = '— not installed'; el.classList.remove('ok'); }
+    if (ok) { el.textContent = t('dxvk.statusInstalled');    el.classList.add('ok'); $('btn-dxvk-uninstall').disabled = !state.isAdmin; }
+    else    { el.textContent = t('dxvk.statusNotInstalled'); el.classList.remove('ok'); }
 
     if (!$('dxvk-src-path').value) {
       const bundled = await window.electronAPI.getBundledDxvk();
@@ -1498,10 +1842,10 @@ async function installDxvk() {
   const note = $('dxvk-note');
   if (!src || !state.isAdmin) return;
   $('btn-dxvk-install').disabled = true;
-  if (note) { note.textContent = 'Copying…'; note.className = 'compat-note'; }
+  if (note) { note.textContent = t('dxvk.copying'); note.className = 'compat-note'; }
   try {
     await window.electronAPI.installDxvk(src);
-    if (note) { note.textContent = '✓ d9vk.dll copied to SysWOW64.'; note.className = 'compat-note ok'; }
+    if (note) { note.textContent = t('dxvk.copyOk'); note.className = 'compat-note ok'; }
     refreshDxvkStatus();
   } catch (err) {
     if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
@@ -1512,10 +1856,10 @@ async function uninstallDxvk() {
   const note = $('dxvk-note');
   if (!state.isAdmin) return;
   $('btn-dxvk-uninstall').disabled = true;
-  if (note) { note.textContent = 'Removing…'; note.className = 'compat-note'; }
+  if (note) { note.textContent = t('dxvk.removing'); note.className = 'compat-note'; }
   try {
     await window.electronAPI.uninstallDxvk();
-    if (note) { note.textContent = '✓ DXVK removed.'; note.className = 'compat-note ok'; }
+    if (note) { note.textContent = t('dxvk.removeOk'); note.className = 'compat-note ok'; }
     refreshDxvkStatus();
   } catch (err) {
     if (note) { note.textContent = err.message; note.className = 'compat-note error'; }
@@ -1530,11 +1874,11 @@ function setup4GBBlock() {
     const note = $('patch-note');
     const btn  = $('btn-4gb-patch');
     btn.disabled = true;
-    if (note) { note.textContent = 'Running patch…'; note.className = 'compat-note'; }
+    if (note) { note.textContent = t('patch4gb.running'); note.className = 'compat-note'; }
     try {
       const r = await window.electronAPI.run4gbPatch(state.gamePath);
       if (note) {
-        if (r.success) { note.textContent = '✓ 4GB patch applied.'; note.className = 'compat-note ok'; }
+        if (r.success) { note.textContent = t('patch4gb.applied'); note.className = 'compat-note ok'; }
         else           { note.textContent = `Error: ${r.error || ''}`;    note.className = 'compat-note error'; }
       }
     } catch (err) {
@@ -1552,17 +1896,17 @@ function setupRedistBlock() {
     const note = $('redist-note');
     const btn  = $('btn-install-redist');
     btn.disabled = true;
-    if (note) { note.textContent = 'Running installers…'; note.className = 'compat-note'; }
+    if (note) { note.textContent = t('redist.running'); note.className = 'compat-note'; }
     try {
       const gameDir = state.gamePath.replace(/[^\\\/]*$/, '').replace(/[\\\/]$/, '');
       const results = await window.electronAPI.installRedist(gameDir);
       if (!results.length) {
-        if (note) { note.textContent = 'No files found in redist folder.'; note.className = 'compat-note error'; }
+        if (note) { note.textContent = t('redist.noFiles'); note.className = 'compat-note error'; }
       } else {
         const failed = results.filter(r => !r.success);
         if (note) {
-          if (failed.length) { note.textContent = 'Errors: ' + failed.map(r => r.file).join(', '); note.className = 'compat-note error'; }
-          else               { note.textContent = '✓ Installed: ' + results.map(r => r.file).join(', '); note.className = 'compat-note ok'; }
+          if (failed.length) { note.textContent = t('redist.errors') + failed.map(r => r.file).join(', '); note.className = 'compat-note error'; }
+          else               { note.textContent = t('redist.installedList') + results.map(r => r.file).join(', '); note.className = 'compat-note ok'; }
         }
       }
     } catch (err) {
@@ -1581,11 +1925,11 @@ function setupAutosaveBlock() {
     const gameDir = state.gamePath.replace(/[^\\\/]*$/, '').replace(/[\\\/]$/, '');
     if (enabled && gameDir) {
       await window.electronAPI.autosaveStart(gameDir, 120000);
-      if (note) { note.textContent = 'Auto-backup enabled.'; note.className = 'compat-note ok'; }
+      if (note) { note.textContent = t('autosave.enabled'); note.className = 'compat-note ok'; }
       await persistSettings({ autosaveEnabled: true });
     } else {
       await window.electronAPI.autosaveStop();
-      if (note) { note.textContent = 'Auto-backup disabled.'; note.className = 'compat-note'; }
+      if (note) { note.textContent = t('autosave.disabled'); note.className = 'compat-note'; }
       await persistSettings({ autosaveEnabled: false });
     }
   });
@@ -1600,11 +1944,11 @@ function setupAutosaveBlock() {
       // Re-render the backups list so the new entry appears immediately.
       renderSavesList();
     } else if (msg.type === 'no-save') {
-      if (note) { note.textContent = 'dp.sav not found.'; note.className = 'compat-note error'; }
+      if (note) { note.textContent = t('autosave.savNotFound'); note.className = 'compat-note error'; }
       $('autosave-toggle').checked = false;
     } else if (msg.type === 'error') {
       if (note) {
-        note.textContent = 'Auto-backup error: ' + msg.error;
+        note.textContent = t('autosave.errorPrefix') + msg.error;
         note.className = 'compat-note error';
       }
     }
@@ -2595,9 +2939,36 @@ async function maybeShowFirstRun() {
 }
 
 async function showFirstRunModal() {
-  $('firstrun-overlay')?.classList.remove('hidden');
+  const overlay = $('firstrun-overlay');
+  const gate    = $('firstrun-admin-gate');
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+
+  // Admin gate: re-fetch admin status fresh (not relying on state.isAdmin
+  // which is set by a parallel setupCompatBlock() call and may race here).
+  let isAdmin = false;
+  try { isAdmin = !!(await window.electronAPI.isAdmin?.()); } catch {}
+  state.isAdmin = isAdmin;
+
+  if (!isAdmin && gate) {
+    overlay.classList.add('is-admin-gated');
+    gate.hidden = false;
+    return;             // do NOT run autodetect until the user clears the gate
+  }
+  if (gate) { gate.hidden = true; }
+  overlay.classList.remove('is-admin-gated');
   await runAutodetect();
 }
+
+function dismissFirstRunAdminGate() {
+  const overlay = $('firstrun-overlay');
+  const gate    = $('firstrun-admin-gate');
+  if (!overlay) return;
+  overlay.classList.remove('is-admin-gated');
+  if (gate) gate.hidden = true;
+  runAutodetect();
+}
+
 function hideFirstRunModal() { $('firstrun-overlay')?.classList.add('hidden'); }
 
 async function runAutodetect() {
@@ -2607,15 +2978,56 @@ async function runAutodetect() {
   try {
     const hit = await window.electronAPI.autodetectGame?.();
     if (!hit) return;
+    // Remember what autodetect found — used later to decide whether to
+    // re-surface the banner if the user manually picks a different folder.
+    firstRunState.detectedDir  = hit.dir;
+    firstRunState.detectedExe  = hit.exePath;
     $('firstrun-detect-path').textContent = hit.dir;
-    banner.classList.remove('hidden');
 
-    // One-click accept
+    // Wire the banner button (used if the user later picks a different folder
+    // and wants to switch back to the autodetected one).
     const btn = $('btn-firstrun-use-detected');
-    if (btn) {
-      btn.onclick = () => acceptDetected(hit);
-    }
+    if (btn) btn.onclick = () => { acceptDetected(hit); banner.classList.add('hidden'); };
+
+    // Auto-accept silently. The banner stays hidden — it'll only reappear
+    // once the user manually picks a different folder via Browse.
+    acceptDetected(hit);
   } catch { /* silent */ }
+}
+
+/**
+ * Middle-truncate a Windows path so the most informative segments (drive
+ * letter at the start + the actual game folder at the end) always fit
+ * inside a single line of the first-run dir card. The card width fits
+ * roughly 42–48 mono chars; we keep 14 chars at the start and as many
+ * trailing segments as fit, joining them with " \…\ ".
+ */
+function shortenPath(p, maxLen = 46) {
+  if (!p || p.length <= maxLen) return p;
+  const sep = /\\/.test(p) ? '\\' : '/';
+  const segs = p.split(sep).filter(Boolean);
+  if (segs.length <= 2) return p;
+  const drive = segs[0];              // "E:"
+  let tail = segs[segs.length - 1];   // last (folder/file name)
+  if (tail.length > maxLen - 8) {
+    return drive + sep + '…' + sep + tail.slice(0, maxLen - drive.length - 4) + '…';
+  }
+  // Greedily add more trailing segments while we still fit.
+  let i = segs.length - 2;
+  while (i > 0) {
+    const candidate = drive + sep + '…' + sep + segs.slice(i).join(sep);
+    if (candidate.length > maxLen) break;
+    tail = segs.slice(i).join(sep);
+    i--;
+  }
+  return drive + sep + '…' + sep + tail;
+}
+
+function setFirstRunDirPath(fullPath) {
+  const el = $('firstrun-dir-path');
+  if (!el) return;
+  el.textContent = shortenPath(fullPath);
+  el.title = fullPath;     // hover shows the untruncated path
 }
 
 function acceptDetected(hit) {
@@ -2624,18 +3036,24 @@ function acceptDetected(hit) {
   const dirCard = document.querySelector('.firstrun-dir');
   dirCard?.classList.remove('error');
   dirCard?.classList.add('ok');
-  $('firstrun-dir-path').textContent = hit.dir;
+  setFirstRunDirPath(hit.dir);
   $('firstrun-dir-hint').textContent =
     t('fr.exeFound').replace('{name}', hit.exePath.split(/[\\/]/).pop());
   $('btn-firstrun-install').disabled = false;
 }
 
 function setupFirstRunModal() {
+  $('btn-firstrun-relaunch-admin')?.addEventListener('click', async () => {
+    const r = await window.electronAPI.relaunchAsAdmin?.();
+    if (!r?.accepted) showToast(t('toast.uacCancelled'), 'warn');
+  });
+  $('btn-firstrun-admin-skip')?.addEventListener('click', dismissFirstRunAdminGate);
+
   $('btn-firstrun-pick')?.addEventListener('click', async () => {
     const r = await window.electronAPI.pickGameDir();
     if (!r) return;
     const dirCard = document.querySelector('.firstrun-dir');
-    $('firstrun-dir-path').textContent = r.dir;
+    setFirstRunDirPath(r.dir);
     if (r.valid) {
       dirCard?.classList.remove('error'); dirCard?.classList.add('ok');
       $('firstrun-dir-hint').textContent =
@@ -2648,10 +3066,24 @@ function setupFirstRunModal() {
       $('firstrun-dir-hint').textContent = t('fr.exeMissing');
       $('btn-firstrun-install').disabled = true;
     }
+
+    // Re-surface the autodetect banner only if the user just picked a folder
+    // different from the one autodetect originally found — so they have a
+    // one-click path back to the Steam-detected install.
+    const banner = $('firstrun-detect');
+    if (banner && firstRunState.detectedDir &&
+        firstRunState.detectedDir !== r.dir) {
+      banner.classList.remove('hidden');
+    } else if (banner) {
+      banner.classList.add('hidden');
+    }
   });
 
   $('btn-firstrun-install')?.addEventListener('click', runFirstRunInstall);
   $('btn-firstrun-back')?.addEventListener('click',    () => setFirstRunStep(1));
+  // Top-right close X (only shown after step 1 completes — gated via CSS).
+  // Step 1 must complete (game path is required), so X stays hidden there.
+  $('btn-firstrun-close')?.addEventListener('click',   () => hideFirstRunModal());
   $('btn-firstrun-next-3')?.addEventListener('click',  () => setFirstRunStep(3));
   $('btn-firstrun-finish')?.addEventListener('click',  () => {
     hideFirstRunModal();
@@ -2677,19 +3109,67 @@ function setFirstRunStep(n) {
   const ov = $('firstrun-overlay');
   if (!ov) return;
   ov.dataset.step = String(n);
-  // Update step bubbles
-  const bubbles = ov.querySelectorAll('.step-bubble');
-  bubbles.forEach((b) => {
+  // Update step bubbles. On the final step (3) every bubble is "done" —
+  // visually finishes the journey instead of leaving the last bubble red.
+  const totalSteps = ov.querySelectorAll('.step-bubble').length;
+  const isFinalStep = n >= totalSteps;
+  ov.querySelectorAll('.step-bubble').forEach((b) => {
     const num = parseInt(b.dataset.step, 10);
-    b.classList.toggle('active', num === n);
-    b.classList.toggle('done',   num <  n);
+    b.classList.toggle('active', !isFinalStep && num === n);
+    b.classList.toggle('done',   isFinalStep || num < n);
   });
-  // Update step connectors
-  const links = ov.querySelectorAll('.step-link');
-  links.forEach((l, idx) => l.classList.toggle('done', idx + 1 < n));
+  // Update step connectors. Three visual states per the spec:
+  //   • .done       — solid green (sits between two completed bubbles)
+  //   • .to-active  — green → red gradient (feeds into the current step)
+  //   • neither     — flat grey track (future segment)
+  // link[idx] connects bubble num=idx+1 → bubble num=idx+2
+  ov.querySelectorAll('.step-link').forEach((l, idx) => {
+    const toNum = idx + 2;
+    const feedsActive = !isFinalStep && toNum === n;
+    const isFullyDone = isFinalStep || toNum < n;
+    l.classList.toggle('done',      isFullyDone);
+    l.classList.toggle('to-active', feedsActive);
+  });
 
   // v1.4 — when entering step 2, refresh RAM-aware 4GB visibility
   if (n === 2) refreshFirstRun4gbVisibility();
+  // Step 3 — filter done-list rows to only what the chosen preset actually
+  // installed, so DXVK doesn't say "Встановлено" when user picked DPfix-only.
+  if (n === 3) refreshFirstRunDoneList();
+}
+
+function refreshFirstRunDoneList() {
+  const preset = firstRunState.lastPreset || 'dpfix-only';
+  const with4gb = firstRunState.lastWith4gb !== undefined
+    ? firstRunState.lastWith4gb
+    : !!$('opt-4gb')?.checked;
+
+  // Which components the chosen preset actually wires into the game
+  // (vs. merely downloaded as part of step-1 setup).
+  const applied = {
+    'dpfix-dxvk': { dpfix: true, dxvk: true },
+    'dxvk-only':  { dpfix: false, dxvk: true },
+    'dpfix-only': { dpfix: true, dxvk: false },
+  }[preset] || { dpfix: true, dxvk: false };
+  applied['4gb'] = !!with4gb;
+
+  const installedTxt = t('fr.installed')  || 'Installed';
+  const notAppliedTxt = t('fr.notApplied') || 'Downloaded, not applied';
+
+  const list = $('firstrun-done-list');
+  if (!list) return;
+  list.querySelectorAll('li[data-comp]').forEach((li) => {
+    const c = li.dataset.comp;
+    const isApplied = !!applied[c];
+    li.hidden = false;                            // every row stays visible
+    li.classList.toggle('is-muted', !isApplied);  // muted row styling
+
+    const pill = li.querySelector('.firstrun-done-pill');
+    if (!pill) return;
+    pill.classList.toggle('is-muted', !isApplied);
+    const txt = pill.querySelector('span:last-child');
+    if (txt) txt.textContent = isApplied ? installedTxt : notAppliedTxt;
+  });
 }
 
 async function refreshFirstRun4gbVisibility() {
@@ -2703,8 +3183,11 @@ async function refreshFirstRun4gbVisibility() {
     // Show only if RAM > 4 GB (recommended target for 4GB patch)
     if (ramGB > 4) {
       extra4gb.style.display = '';
-      if (status) {
-        status.textContent = `${t('fr.systemRam') || 'System RAM'}: ${ramGB} GB — ${t('fr.patch4gbRecommended') || '4GB Patch recommended'}`;
+      // The pill now wraps a sibling RAM-chip icon, so target the inner
+      // text span instead of overwriting the pill's whole contents.
+      const txt = status?.querySelector('.fr-extra-status-text') || status;
+      if (txt) {
+        txt.textContent = `${t('fr.systemRam') || 'System RAM'}: ${ramGB} GB — ${t('fr.patch4gbRecommended') || '4GB Patch recommended'}`;
       }
       if (check) check.checked = true;
     } else {
@@ -2717,11 +3200,56 @@ async function refreshFirstRun4gbVisibility() {
   }
 }
 
+// "Original files" preset: hand off to Steam's local file integrity check
+// via steam://validate/<appid>. Steam re-downloads anything modified by
+// DPfix / DXVK / 4GB / Skip Intro and we're back to vanilla.
+async function triggerOriginalFilesValidation(statusEl) {
+  const ok = await openConfirm({
+    title:      t('originalFiles.confirmTitle') || 'Restore original files?',
+    body:       t('originalFiles.confirmBody')  ||
+                'Steam will verify game-file integrity and re-download anything modified by DPfix, DXVK, 4GB Patch or Skip Intro.',
+    okText:     t('originalFiles.confirmOk')    || 'Yes, verify via Steam',
+    cancelText: t('originalFiles.confirmCancel')|| 'Cancel',
+  });
+  if (!ok) return;
+
+  try {
+    const r = await window.electronAPI.validateSteam?.(STEAM_APPID);
+    if (r?.success) {
+      showToast(t('toast.originalFilesLaunched') || 'Steam launched — verifying files', 'success');
+      logActivity('completed', 'Steam file integrity verification launched (steam://validate)');
+      if (statusEl) {
+        statusEl.textContent = t('toast.originalFilesLaunched') || 'Steam launched — verifying files';
+        statusEl.className = (statusEl.className || '').replace(/\b(error|ok|active)\b/g, '').trim() + ' active ok';
+      }
+    } else {
+      const msg = r?.error || 'failed';
+      showToast(t('toast.steamValidateFailed') + msg, 'error');
+      if (statusEl) {
+        statusEl.textContent = msg;
+        statusEl.className = (statusEl.className || '').replace(/\b(error|ok|active)\b/g, '').trim() + ' active error';
+      }
+    }
+  } catch (err) {
+    showToast(t('toast.steamValidateFailed') + err.message, 'error');
+    if (statusEl) { statusEl.textContent = err.message; statusEl.className = 'compat-note error'; }
+  }
+}
+
 async function onFirstRunApplyPreset() {
   const gameDir = firstRunState.gameDir;
   if (!gameDir) return;
-  const selected = document.querySelector('input[name="firstrun-preset"]:checked')?.value || 'dpfix-dxvk';
+  const selected = document.querySelector('input[name="firstrun-preset"]:checked')?.value || 'dpfix-only';
   const with4gb  = $('opt-4gb')?.checked || false;
+
+  // Remember choice so the step-3 done list can show only what was installed
+  firstRunState.lastPreset  = selected;
+  firstRunState.lastWith4gb = with4gb;
+
+  if (selected === 'original-files') {
+    await triggerOriginalFilesValidation($('firstrun-preset-status'));
+    return;
+  }
 
   const statusEl = $('firstrun-preset-status');
   const applyBtn = $('btn-firstrun-apply-preset');
@@ -2839,7 +3367,7 @@ async function runFirstRunInstall() {
   } else {
     $('btn-firstrun-pick').disabled = false;
     $('btn-firstrun-install').disabled = false;
-    showToast('Деякі компоненти не встановлено. Спробуйте ще раз.', 'warn');
+    showToast(t('toast.setupSomeFailed'), 'warn');
   }
 
   setTimeout(() => clearDownload('setup'), 3000);
@@ -2904,7 +3432,7 @@ function updateDashboardDownload(msg) {
     const pct = msg.total > 0 ? (msg.downloaded / msg.total) * 100 : 0;
     if (fill)  fill.style.width = `${pct}%`;
     if (pctEl) pctEl.textContent = msg.total > 0 ? `${Math.round(pct)}%` : '—';
-    if (stage) stage.textContent = 'Downloading…';
+    if (stage) stage.textContent = t('update.downloading');
     if (size)  size.textContent  = `${formatBytes(msg.downloaded)} / ${msg.total > 0 ? formatBytes(msg.total) : '?'}`;
     if (speed) speed.textContent = `${formatBytes(msg.speed)}/s`;
     if (time && msg.speed > 0 && msg.total > 0) {
@@ -2912,19 +3440,19 @@ function updateDashboardDownload(msg) {
       time.textContent = formatSeconds(remaining);
     }
   } else if (msg.type === 'extracting') {
-    if (stage) stage.textContent = 'Extracting files…';
+    if (stage) stage.textContent = t('update.extracting');
     if (fill)  fill.style.width = '100%';
     if (pctEl) pctEl.textContent = '—';
   } else if (msg.type === 'done') {
-    if (stage) stage.textContent = '✓ Installed';
+    if (stage) stage.textContent = t('update.installed');
     if (fill)  fill.style.width = '100%';
     if (pctEl) pctEl.textContent = '100%';
   } else if (msg.type === 'error') {
-    if (stage) stage.textContent = 'Error: ' + (msg.error || '');
+    if (stage) stage.textContent = t('update.errorPrefix') + (msg.error || '');
   }
 
   if (msg.type === 'skipped') {
-    if (stage) stage.textContent = '✓ Already installed';
+    if (stage) stage.textContent = t('update.alreadyInstalled');
     if (fill)  fill.style.width = '100%';
     if (pctEl) pctEl.textContent = '✓';
   }
@@ -2991,7 +3519,7 @@ function setupAudioInterfaceControls() {
     } else {
       ev.target.checked = !enabled; // revert
       const fails = (r?.failures && r.failures.length) ? ` (${r.failures[0]})` : '';
-      showToast('Не вдалося змінити Steam Overlay: ' + (r?.error || 'unknown') + fails, 'error');
+      showToast(t('toast.steamOverlayFailed') + (r?.error || 'unknown') + fails, 'error');
     }
   });
 }
@@ -3446,6 +3974,11 @@ async function onSettingsApplyPreset() {
   if (!gameDir) return;
   const selected = document.querySelector('input[name="settings-preset"]:checked')?.value;
   if (!selected) return;
+
+  if (selected === 'original-files') {
+    await triggerOriginalFilesValidation($('settings-preset-status'));
+    return;
+  }
 
   const ok = await openConfirm({
     title: t('presetsTab.confirmTitle') || `Apply ${selected}?`,

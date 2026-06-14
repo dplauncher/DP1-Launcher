@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Steam launch ─────────────────────────────
   launchSteam:      (appId) => ipcRenderer.invoke('launch-steam', appId),
+  validateSteam:    (appId) => ipcRenderer.invoke('steam-validate', appId),
 
   // ── INI file operations ───────────────────────
   loadIni:          (filePath)          => ipcRenderer.invoke('load-ini',   filePath),
@@ -35,6 +36,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkFpsCap:      (gameDir)           => ipcRenderer.invoke('check-fps-cap',   { gameDir }),
   applyFpsCap:      (gameDir, enable)   => ipcRenderer.invoke('apply-fps-cap',   { gameDir, enable }),
   openGpuSettings:  (vendor)            => ipcRenderer.invoke('open-gpu-settings', { vendor }),
+  openSoundSettings:(tab)               => ipcRenderer.invoke('open-sound-settings', { tab }),
   dxvkCacheInfo:    (gameDir)           => ipcRenderer.invoke('dxvk-cache-info', { gameDir }),
   dxvkCacheClean:   (gameDir)           => ipcRenderer.invoke('dxvk-cache-clean', { gameDir }),
   checkCodecFix:    ()                  => ipcRenderer.invoke('check-codec-fix'),
@@ -129,8 +131,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   nanGuardApply:             (gameDir)          => ipcRenderer.invoke('nan-guard-apply',  { gameDir }),
   nanGuardRevert:            (gameDir)          => ipcRenderer.invoke('nan-guard-revert', { gameDir }),
   gpuInfo:                   ()                 => ipcRenderer.invoke('gpu-info'),
-
-  // ── v1.5.1 Elevation helpers (for DPfix+DXVK preset / SysWOW64 writes) ──
-  isAdmin:                   ()                 => ipcRenderer.invoke('is-admin'),
-  relaunchAsAdmin:           ()                 => ipcRenderer.invoke('relaunch-as-admin'),
+  // isAdmin / relaunchAsAdmin live under "Admin & elevation" above — no dup needed.
 });

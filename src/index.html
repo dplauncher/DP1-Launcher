@@ -165,7 +165,7 @@
         <span class="hero-status-dot" id="status-dot"></span>
         <span class="hero-status-text" id="status-text" data-i18n="hero.gameReady">Game Ready</span>
         <span class="hero-status-sep">·</span>
-        <span class="hero-version" id="hero-version">v1.0.3</span>
+        <span class="hero-version" id="hero-version">v2.0.0</span>
       </div>
     </section>
 
@@ -301,207 +301,470 @@
 
           <!-- GENERAL -->
           <section class="settings-section active" data-section="general">
-            <div class="form-row">
-              <span class="form-label">
-                <span data-i18n="settings.launcherLang">Launcher Language</span>
-                <em class="form-hint" data-i18n="settings.launcherLangHint">UI language of the launcher</em>
-              </span>
-              <select id="form-language" class="form-select">
-                <option value="uk">Українська</option>
-                <option value="en">English</option>
-              </select>
-            </div>
-            <h4 class="form-subhead" data-i18n="settings.launchOpts">Launch Options</h4>
-            <label class="form-check">
-              <input type="checkbox" id="opt-steam-overlay">
-              <span class="form-check-box"></span>
-              <span data-i18n="settings.steamOverlay">Enable Steam Overlay</span>
-            </label>
-            <label class="form-check">
-              <input type="checkbox" id="opt-run-as-admin">
-              <span class="form-check-box"></span>
-              <span data-i18n="settings.runAsAdmin">Run as Administrator</span>
-            </label>
 
-            <h4 class="form-subhead" data-i18n="dxvkRevert.title">DXVK</h4>
-            <p class="settings-help" data-i18n-html="dxvkRevert.help">
-              Якщо DXVK спричиняє проблеми, скиньте його повністю: лаунчер відновить оригінальний
-              <code>d3d9.dll</code> у папці гри з <code>.bak</code> і видалить
-              <code>C:\Windows\SysWOW64\d9vk.dll</code>. Потрібні права адміністратора для видалення системного DLL.
-            </p>
-            <div class="form-row">
-              <span class="form-label" data-i18n="dxvkRevert.status">DXVK status</span>
-              <span class="compat-status" id="dxvk-revert-status">—</span>
-            </div>
-            <div class="compat-actions">
-              <button class="btn-secondary btn-danger" id="btn-dxvk-revert" disabled data-i18n="dxvkRevert.btn">
-                Скинути DXVK повністю
-              </button>
-            </div>
-            <p class="compat-note" id="dxvk-revert-note"></p>
+            <!-- Page-level heading (point 1: hierarchy) -->
+            <header class="settings-page-head">
+              <h2 class="settings-page-title" data-i18n="settingsPage.generalTitle">Загальні налаштування</h2>
+              <p class="settings-page-sub" data-i18n="settingsPage.generalSub">Базові параметри запуску та сумісності для найкращого досвіду гри.</p>
+            </header>
 
-            <div class="about-reset">
-              <h4 class="form-subhead" data-i18n="reset.title">Скинути все</h4>
-              <p class="settings-help" data-i18n="reset.help">
-                Видаляє збережені налаштування і журнал подій. Лаунчер перезапуститься
-                й покаже першозапуск. Файли гри й резервні копії сейвів не чіпаємо.
-              </p>
-              <button class="btn-secondary btn-danger" id="btn-reset-all" data-i18n="reset.btn">
-                Скинути все та перезапустити
-              </button>
+            <!-- Row 1: two side-by-side mini-cards (Language + Launch options) -->
+            <div class="settings-card-row">
+
+              <div class="settings-card settings-card-compact">
+                <div class="settings-card-head-mini">
+                  <span class="settings-card-mini-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9"/>
+                      <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+                    </svg>
+                  </span>
+                  <span class="settings-card-mini-title" data-i18n="settingsPage.langTitle">Мова лаунчера</span>
+                </div>
+                <p class="settings-card-mini-sub" data-i18n="settingsPage.langSub">Виберіть мову інтерфейсу лаунчера.</p>
+                <div class="settings-card-body">
+                  <select id="form-language" class="form-select settings-select-full">
+                    <option value="uk">Українська</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="settings-card settings-card-compact">
+                <div class="settings-card-head-mini">
+                  <span class="settings-card-mini-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M4.5 16.5L3 21l4.5-1.5M14 4l-9 9 6 6 9-9M14 4l3-3 3 3-3 3M14 4l3 3"/>
+                    </svg>
+                  </span>
+                  <span class="settings-card-mini-title" data-i18n="settingsPage.launchOptsTitle">Параметри запуску</span>
+                </div>
+                <p class="settings-card-mini-sub" data-i18n="settingsPage.launchOptsSub">Додаткові параметри для запуску гри.</p>
+                <div class="settings-card-body settings-toggle-list">
+                  <label class="settings-toggle-row">
+                    <span class="settings-toggle-text">
+                      <span class="settings-toggle-name" data-i18n="settings.steamOverlay">Увімкнути Steam Overlay</span>
+                      <span class="settings-toggle-desc" data-i18n="settings.steamOverlayDesc">Дозволяє використовувати оверлей Steam у грі.</span>
+                    </span>
+                    <span class="form-toggle">
+                      <input type="checkbox" id="opt-steam-overlay">
+                      <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                    </span>
+                  </label>
+                  <label class="settings-toggle-row">
+                    <span class="settings-toggle-text">
+                      <span class="settings-toggle-name" data-i18n="settings.runAsAdmin">Запускати від адміністратора</span>
+                      <span class="settings-toggle-desc" data-i18n="settings.runAsAdminDesc">Підвищені права для кращої сумісності.</span>
+                    </span>
+                    <span class="form-toggle">
+                      <input type="checkbox" id="opt-run-as-admin">
+                      <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
             </div>
+
+            <!-- DXVK card (full-width, point 4: technical block with status) -->
+            <div class="settings-card">
+              <div class="settings-card-head-mini settings-card-head-spread">
+                <div class="settings-card-head-l">
+                  <span class="settings-card-mini-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                      <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/>
+                    </svg>
+                  </span>
+                  <span class="settings-card-mini-title">DXVK</span>
+                  <span class="settings-status-pill" id="dxvk-revert-status-pill">
+                    <span class="settings-status-dot"></span>
+                    <span class="settings-status-text" id="dxvk-revert-status" data-i18n="dxvkRevert.notApplied">— не застосовано</span>
+                  </span>
+                </div>
+              </div>
+              <p class="settings-card-mini-sub" data-i18n="dxvkRevert.longSub">DXVK перенаправляє Direct3D 9 через Vulkan для кращої сумісності і продуктивності.</p>
+              <div class="settings-card-body">
+                <div class="settings-dxvk-rows">
+                  <div class="settings-dxvk-row">
+                    <span class="settings-dxvk-label" data-i18n="dxvkRevert.dllLabel">Розташування DLL</span>
+                    <code class="inline-pill settings-dxvk-path" id="dxvk-dll-path">C:\Windows\SysWOW64\d9vk.dll</code>
+                    <button class="settings-copy-btn" id="btn-dxvk-dll-copy" type="button"
+                            data-copy-target="dxvk-dll-path"
+                            data-i18n-title="dxvkRevert.copyPath" title="Скопіювати шлях"
+                            aria-label="Copy DLL path">
+                      <svg class="copy-ico-default" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="9" y="9" width="13" height="13" rx="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                      <svg class="copy-ico-done" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M5 12l5 5 9-10"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="settings-card-actions settings-card-actions-end">
+                  <button class="btn-secondary btn-danger settings-btn-with-icon" id="btn-dxvk-revert" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    </svg>
+                    <span data-i18n="dxvkRevert.btn">Скинути DXVK повністю</span>
+                  </button>
+                </div>
+                <div class="settings-card-foot-note">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+                  </svg>
+                  <span data-i18n-html="dxvkRevert.footNote">Лаунчер відновить оригінальний <code class="inline-pill">d3d9.dll</code> з <code class="inline-pill">exe_backup/d3d9.dll_dpfix_only</code> і видалить системний DLL.</span>
+                </div>
+                <p class="compat-note" id="dxvk-revert-note"></p>
+              </div>
+            </div>
+
+            <!-- Reset everything (point 5: dangerous action, red accent) -->
+            <div class="settings-card settings-card-warn">
+              <div class="settings-card-head-mini settings-card-head-spread">
+                <div class="settings-card-head-l">
+                  <span class="settings-card-mini-icon settings-card-mini-icon-warn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <path d="M12 9v4M12 17h0"/>
+                    </svg>
+                  </span>
+                  <span class="settings-card-mini-title" data-i18n="reset.title">Скинути все</span>
+                </div>
+                <button class="btn-secondary btn-danger settings-btn-with-icon" id="btn-reset-all">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/>
+                  </svg>
+                  <span data-i18n="reset.btn">Скинути все та перезапустити</span>
+                </button>
+              </div>
+              <p class="settings-card-mini-sub" data-i18n="reset.help">Видаляє збережені налаштування і журнал подій лаунчера. Лаунчер перезапуститься й покаже першозапуск. Файли гри й резервні копії сейвів не чіпаємо.</p>
+            </div>
+
           </section>
 
           <!-- GRAPHICS -->
           <section class="settings-section" data-section="graphics">
-            <div class="form-2col">
-            <div class="form-row">
-              <span class="form-label">Anti-Aliasing</span>
-              <select id="aa-quality" class="form-select">
-                <option value="0">Off</option>
-                <option value="1">Low</option>
-                <option value="2" selected>Medium</option>
-                <option value="3">High</option>
-                <option value="4">Ultra</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <span class="form-label">AA Type</span>
-              <select id="aa-type" class="form-select">
-                <option value="SMAA" selected>SMAA</option>
-                <option value="FXAA">FXAA</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <span class="form-label">Filtering Override</span>
-              <select id="filtering" class="form-select">
-                <option value="0" selected>Off</option>
-                <option value="1">Bilinear</option>
-                <option value="2">Aniso 16×</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <span class="form-label">Shadow Resolution</span>
-              <select id="shadow-scale" class="form-select">
-                <option value="1" selected>1×</option>
-                <option value="2">4×</option>
-                <option value="4">8×</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <span class="form-label">Improved Shadows</span>
-              <label class="form-toggle">
-                <input type="checkbox" id="shadow-precision">
-                <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
-              </label>
-            </div>
-            <div class="form-row">
-              <span class="form-label">Reflection Resolution</span>
-              <select id="reflect-scale" class="form-select">
-                <option value="1" selected>1×</option>
-                <option value="2">4×</option>
-                <option value="4">8×</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <span class="form-label">Improved DoF</span>
-              <label class="form-toggle">
-                <input type="checkbox" id="improve-dof">
-                <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
-              </label>
-            </div>
-            <div class="form-row">
-              <span class="form-label">DoF Blur</span>
-              <select id="dof-blur" class="form-select">
-                <option value="0" selected>Off</option>
-                <option value="1">1080p</option>
-                <option value="2">4K</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <span class="form-label">SSAO</span>
-              <select id="ssao-strength" class="form-select">
-                <option value="0" selected>Off</option>
-                <option value="1">Low</option>
-                <option value="2">Medium</option>
-                <option value="3">High</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <span class="form-label">SSAO Quality</span>
-              <select id="ssao-scale" class="form-select">
-                <option value="1" selected>High</option>
-                <option value="2">Low</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <span class="form-label">SSAO Type</span>
-              <select id="ssao-type" class="form-select">
-                <option value="VSSAO" selected>VSSAO</option>
-                <option value="VSSAO2">VSSAO2</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <span class="form-label">Texture Dump</span>
-              <label class="form-toggle">
-                <input type="checkbox" id="tex-dump">
-                <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
-              </label>
-            </div>
-            <div class="form-row">
-              <span class="form-label">Texture Override</span>
-              <label class="form-toggle">
-                <input type="checkbox" id="tex-override">
-                <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
-              </label>
-            </div>
 
-            <h4 class="form-subhead" data-i18n="graphics.displayHeader">Display</h4>
-            <div class="form-row">
-              <span class="form-label">Resolution</span>
-              <select id="res-preset" class="form-select">
-                <option value="1280×720">1280 × 720</option>
-                <option value="1366×768">1366 × 768</option>
-                <option value="1600×900">1600 × 900</option>
-                <option value="1920×1080" selected>1920 × 1080</option>
-                <option value="2560×1440">2560 × 1440</option>
-                <option value="3840×2160">3840 × 2160</option>
-                <option value="custom">Custom…</option>
-              </select>
-            </div>
-            <div class="form-row" id="custom-res-row">
-              <span class="form-label">Width / Height</span>
-              <div class="form-control-inline">
-                <input type="number" id="res-width"  class="form-num" value="1920" disabled>
-                <input type="number" id="res-height" class="form-num" value="1080" disabled>
+            <header class="settings-page-head settings-page-head-with-aside">
+              <div class="settings-page-head-text">
+                <h2 class="settings-page-title" data-i18n="settingsPage.graphicsTitle">Графічні налаштування</h2>
+                <p class="settings-page-sub" data-i18n="settingsPage.graphicsSub">Налаштуйте параметри рендерингу та відображення для найкращого досвіду в Deadly Premonition.</p>
               </div>
-            </div>
-            <div class="form-row">
-              <span class="form-label">Display Mode</span>
-              <div class="form-radio-row">
-                <label class="form-radio">
-                  <input type="radio" name="disp-mode" value="fullscreen">
-                  <span class="form-radio-ring"></span>Fullscreen
-                </label>
-                <label class="form-radio">
-                  <input type="radio" name="disp-mode" value="borderless" checked>
-                  <span class="form-radio-ring"></span>Borderless
-                </label>
-                <label class="form-radio">
-                  <input type="radio" name="disp-mode" value="windowed">
-                  <span class="form-radio-ring"></span>Windowed
-                </label>
+              <div class="gfx-profile-wrap">
+                <button class="gfx-profile-card" id="gfx-profile-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="gfx-profile-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 6h18M6 12h12M9 18h6"/>
+                    </svg>
+                  </span>
+                  <span class="gfx-profile-text">
+                    <span class="gfx-profile-label" data-i18n="settingsPage.graphicsProfileLabel">Поточний профіль:</span>
+                    <span class="gfx-profile-value" id="gfx-profile-value">Balanced</span>
+                  </span>
+                  <svg class="gfx-profile-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6 9l6 6 6-6"/>
+                  </svg>
+                </button>
+                <div class="gfx-profile-menu hidden" id="gfx-profile-menu" role="listbox">
+                  <div class="gfx-profile-menu-section" data-i18n="gfx.presetsBuiltIn">Стандартні</div>
+                  <ul class="gfx-profile-list" id="gfx-profile-list-builtin"></ul>
+                  <div class="gfx-profile-menu-section gfx-profile-menu-custom-head" id="gfx-profile-custom-head">
+                    <span data-i18n="gfx.presetsCustom">Мої пресети</span>
+                  </div>
+                  <ul class="gfx-profile-list" id="gfx-profile-list-custom"></ul>
+                  <button class="gfx-profile-save" id="btn-gfx-save-preset" type="button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    <span data-i18n="gfx.savePreset">Зберегти поточні як пресет…</span>
+                  </button>
+                </div>
               </div>
+            </header>
+
+            <div class="gfx-grid">
+
+              <!-- ─── Rendering card ─── -->
+              <div class="settings-card gfx-card">
+                <div class="settings-card-head-mini">
+                  <span class="settings-card-mini-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                      <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/>
+                    </svg>
+                  </span>
+                  <span class="settings-card-mini-title" data-i18n="settingsPage.graphicsRendering">Рендеринг</span>
+                </div>
+
+                <div class="settings-card-body gfx-form">
+                  <div class="gfx-form-grid">
+
+                    <div class="gfx-field">
+                      <label class="gfx-field-label" for="aa-quality">Anti-Aliasing</label>
+                      <select id="aa-quality" class="form-select gfx-select">
+                        <option value="0">Off</option>
+                        <option value="1">Low</option>
+                        <option value="2" selected>Medium</option>
+                        <option value="3">High</option>
+                        <option value="4">Ultra</option>
+                      </select>
+                    </div>
+
+                    <div class="gfx-field">
+                      <label class="gfx-field-label" for="aa-type">AA Type
+                        <span class="gfx-rec-tag" data-i18n="gfx.recommended">Рекомендовано</span>
+                      </label>
+                      <select id="aa-type" class="form-select gfx-select">
+                        <option value="SMAA" selected>SMAA</option>
+                        <option value="FXAA">FXAA</option>
+                      </select>
+                    </div>
+
+                    <div class="gfx-field">
+                      <label class="gfx-field-label" for="filtering">Filtering Override</label>
+                      <select id="filtering" class="form-select gfx-select">
+                        <option value="0" selected>Off</option>
+                        <option value="1">Bilinear</option>
+                        <option value="2">Aniso 16×</option>
+                      </select>
+                    </div>
+
+                    <div class="gfx-field">
+                      <label class="gfx-field-label" for="shadow-scale">Shadow Resolution</label>
+                      <select id="shadow-scale" class="form-select gfx-select">
+                        <option value="1" selected>1×</option>
+                        <option value="2">4×</option>
+                        <option value="4">8×</option>
+                      </select>
+                    </div>
+
+                    <div class="gfx-field gfx-field-toggle">
+                      <span class="gfx-field-text">
+                        <span class="gfx-field-label-main">Improved Shadows</span>
+                        <span class="gfx-field-desc" data-i18n="gfx.improvedShadowsDesc">Покращене відображення тіней.</span>
+                      </span>
+                      <label class="form-toggle">
+                        <input type="checkbox" id="shadow-precision">
+                        <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                      </label>
+                    </div>
+
+                    <div class="gfx-field">
+                      <label class="gfx-field-label" for="reflect-scale">Reflection Resolution</label>
+                      <select id="reflect-scale" class="form-select gfx-select">
+                        <option value="1" selected>1×</option>
+                        <option value="2">4×</option>
+                        <option value="4">8×</option>
+                      </select>
+                    </div>
+
+                    <div class="gfx-field gfx-field-toggle">
+                      <span class="gfx-field-text">
+                        <span class="gfx-field-label-main">Improved DoF</span>
+                        <span class="gfx-field-desc" data-i18n="gfx.improvedDofDesc">Покращене розмиття глибини різкості.</span>
+                      </span>
+                      <label class="form-toggle">
+                        <input type="checkbox" id="improve-dof">
+                        <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                      </label>
+                    </div>
+
+                    <div class="gfx-field">
+                      <label class="gfx-field-label" for="dof-blur">DoF Blur</label>
+                      <select id="dof-blur" class="form-select gfx-select">
+                        <option value="0" selected>Off</option>
+                        <option value="1">1080p</option>
+                        <option value="2">4K</option>
+                      </select>
+                    </div>
+
+                    <div class="gfx-field">
+                      <label class="gfx-field-label" for="ssao-strength">SSAO</label>
+                      <select id="ssao-strength" class="form-select gfx-select">
+                        <option value="0" selected>Off</option>
+                        <option value="1">Low</option>
+                        <option value="2">Medium</option>
+                        <option value="3">High</option>
+                      </select>
+                    </div>
+
+                    <div class="gfx-field">
+                      <label class="gfx-field-label" for="ssao-scale">SSAO Quality
+                        <span class="gfx-rec-tag" data-i18n="gfx.recommended">Рекомендовано</span>
+                      </label>
+                      <select id="ssao-scale" class="form-select gfx-select">
+                        <option value="1" selected>High</option>
+                        <option value="2">Low</option>
+                      </select>
+                    </div>
+
+                    <div class="gfx-field">
+                      <label class="gfx-field-label" for="ssao-type">SSAO Type</label>
+                      <select id="ssao-type" class="form-select gfx-select">
+                        <option value="VSSAO" selected>VSSAO</option>
+                        <option value="VSSAO2">VSSAO2</option>
+                      </select>
+                    </div>
+
+                    <div class="gfx-field gfx-field-toggle">
+                      <span class="gfx-field-text">
+                        <span class="gfx-field-label-main">Texture Override</span>
+                        <span class="gfx-field-desc" data-i18n="gfx.texOverrideDesc">Примусовий режим завантаження текстур.</span>
+                      </span>
+                      <label class="form-toggle">
+                        <input type="checkbox" id="tex-override">
+                        <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                      </label>
+                    </div>
+
+                    <div class="gfx-field gfx-field-toggle">
+                      <span class="gfx-field-text">
+                        <span class="gfx-field-label-main">Texture Dump</span>
+                        <span class="gfx-field-desc" data-i18n="gfx.texDumpDesc">Зберігати текстури для діагностики.</span>
+                      </span>
+                      <label class="form-toggle">
+                        <input type="checkbox" id="tex-dump">
+                        <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
+                      </label>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+
+              <!-- ─── Display card ─── -->
+              <div class="settings-card gfx-card gfx-card-display">
+                <div class="settings-card-head-mini">
+                  <span class="settings-card-mini-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <rect x="2" y="4" width="20" height="14" rx="2"/>
+                      <path d="M8 22h8M12 18v4"/>
+                    </svg>
+                  </span>
+                  <span class="settings-card-mini-title" data-i18n="settingsPage.graphicsDisplay">Дисплей</span>
+                </div>
+
+                <div class="settings-card-body gfx-form">
+                  <div class="gfx-field">
+                    <label class="gfx-field-label" for="res-preset">Resolution
+                      <span class="gfx-field-hint" data-i18n="gfx.resolutionHint">Виберіть базову роздільну здатність.</span>
+                    </label>
+                    <select id="res-preset" class="form-select gfx-select">
+                      <option value="1280×720">1280 × 720</option>
+                      <option value="1366×768">1366 × 768</option>
+                      <option value="1600×900">1600 × 900</option>
+                      <option value="1920×1080" selected>1920 × 1080 (16:9)</option>
+                      <option value="2560×1440">2560 × 1440</option>
+                      <option value="3840×2160">3840 × 2160</option>
+                      <option value="custom">Custom…</option>
+                    </select>
+                  </div>
+
+                  <div class="gfx-field">
+                    <label class="gfx-field-label">Display Mode
+                      <span class="gfx-field-hint" data-i18n="gfx.displayModeHint">Режим відображення гри.</span>
+                    </label>
+                    <div class="gfx-segmented" role="radiogroup">
+                      <label class="gfx-seg">
+                        <input type="radio" name="disp-mode" value="fullscreen">
+                        <span class="gfx-seg-body">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/>
+                          </svg>
+                          Fullscreen
+                        </span>
+                      </label>
+                      <label class="gfx-seg">
+                        <input type="radio" name="disp-mode" value="borderless" checked>
+                        <span class="gfx-seg-body">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="5" width="18" height="14" rx="2"/>
+                          </svg>
+                          Borderless
+                        </span>
+                      </label>
+                      <label class="gfx-seg">
+                        <input type="radio" name="disp-mode" value="windowed">
+                        <span class="gfx-seg-body">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="4" y="6" width="16" height="12" rx="1.5"/>
+                            <path d="M4 9h16"/>
+                          </svg>
+                          Windowed
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="gfx-field" id="custom-res-row">
+                    <label class="gfx-field-label">Width / Height
+                      <span class="gfx-field-hint" data-i18n="gfx.whHint">Роздільна здатність у пікселях.</span>
+                    </label>
+                    <div class="gfx-wh-row">
+                      <input type="number" id="res-width"  class="form-num gfx-num" value="1920" disabled>
+                      <span class="gfx-wh-sep">×</span>
+                      <input type="number" id="res-height" class="form-num gfx-num" value="1080" disabled>
+                    </div>
+                  </div>
+
+                  <div class="gfx-field">
+                    <label class="gfx-field-label" for="fullscreen-hz">Refresh Rate
+                      <span class="gfx-field-hint" data-i18n="gfx.hzHint">Частота оновлення монітора.</span>
+                    </label>
+                    <input type="number" id="fullscreen-hz" class="form-num gfx-num gfx-hz-input" value="60" min="24" max="500" step="1">
+                  </div>
+
+                  <div class="gfx-active-profile">
+                    <span class="gfx-active-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="2" y="4" width="20" height="14" rx="2"/>
+                        <path d="M8 22h8M12 18v4"/>
+                      </svg>
+                    </span>
+                    <span class="gfx-active-text">
+                      <span class="gfx-active-label" data-i18n="gfx.activeProfileLabel">Поточний вихідний профіль</span>
+                      <span class="gfx-active-value" id="gfx-active-value">1920 × 1080 · 60 Hz · Fullscreen</span>
+                    </span>
+                    <span class="settings-status-pill is-applied">
+                      <span class="settings-status-dot"></span>
+                      <span data-i18n="gfx.activeStatus">Активно</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
             </div>
-            <div class="form-row">
-              <span class="form-label">Refresh Rate</span>
-              <input type="number" id="fullscreen-hz" class="form-num" value="60">
-            </div>
-            </div><!-- /form-2col -->
           </section>
 
           <!-- ACCESSIBILITY -->
           <section class="settings-section" data-section="accessibility">
+
+            <header class="settings-page-head">
+              <h2 class="settings-page-title" data-i18n="settingsPage.accessibilityTitle">Доступність</h2>
+              <p class="settings-page-sub" data-i18n="settingsPage.accessibilitySub">Налаштування сумісності для запуску та стабільної роботи гри на різних системах.</p>
+            </header>
+
             <div class="compat-admin-banner" id="compat-admin-banner">
               <span class="compat-admin-icon">⚠</span>
               <div class="compat-admin-text">
@@ -512,22 +775,87 @@
                       data-i18n="accessibility.relaunchAdmin">Relaunch as Admin</button>
             </div>
 
-            <h4 class="form-subhead" data-i18n="accessibility.compatMode">Windows Compatibility Mode</h4>
-            <div class="compat-target-row">
-              <span class="compat-filename">DeadlyPremonition.exe</span>
-              <span class="compat-status" id="compat-status-dp">—</span>
-            </div>
-            <div class="compat-target-row">
-              <span class="compat-filename">DPLauncher.exe</span>
-              <span class="compat-status" id="compat-status-launcher">—</span>
-            </div>
-            <div class="compat-actions">
-              <button class="btn-primary"   id="btn-compat-toggle" disabled data-i18n="accessibility.applyXP">Apply XP SP3</button>
-              <button class="btn-secondary" id="btn-compat-win98"  disabled data-i18n="accessibility.apply98">Apply Win 98 / Me</button>
-            </div>
-            <p class="compat-note" id="compat-note"></p>
+            <div class="accessibility-row">
 
-            <h4 class="form-subhead" data-i18n="dpcFixes.title">DPC Fixes</h4>
+              <!-- Compatibility-mode card (main, wider) -->
+              <div class="settings-card accessibility-compat-card">
+                <div class="settings-card-head-mini">
+                  <span class="settings-card-mini-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <rect x="3" y="3" width="8" height="8" rx="1"/>
+                      <rect x="13" y="3" width="8" height="8" rx="1"/>
+                      <rect x="3" y="13" width="8" height="8" rx="1"/>
+                      <rect x="13" y="13" width="8" height="8" rx="1"/>
+                    </svg>
+                  </span>
+                  <span class="settings-card-mini-title" data-i18n="accessibility.compatMode">Режим сумісності Windows</span>
+                </div>
+
+                <ul class="compat-target-list">
+                  <li class="compat-target-card">
+                    <div class="compat-target-text">
+                      <span class="compat-target-name">DeadlyPremonition.exe</span>
+                      <span class="compat-target-tag" data-i18n="accessibility.tagRecommended">Рекомендовано</span>
+                    </div>
+                    <span class="compat-status" id="compat-status-dp">—</span>
+                  </li>
+                  <li class="compat-target-card">
+                    <div class="compat-target-text">
+                      <span class="compat-target-name">DPLauncher.exe</span>
+                      <span class="compat-target-tag compat-target-tag-alt" data-i18n="accessibility.tagAlternative">Альтернативний</span>
+                    </div>
+                    <span class="compat-status" id="compat-status-launcher">—</span>
+                  </li>
+                </ul>
+
+                <div class="compat-actions">
+                  <button class="btn-primary settings-btn-with-icon" id="btn-compat-toggle" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M5 12l5 5 9-10"/>
+                    </svg>
+                    <span data-i18n="accessibility.applyXP">Apply XP SP3</span>
+                  </button>
+                  <button class="btn-secondary settings-btn-with-icon" id="btn-compat-win98" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94L9.41 18.6a2 2 0 0 1-2.83-2.83L13.4 9l-5.9-5.9A4.55 4.55 0 0 0 4.05 4l4.6 4.6"/>
+                    </svg>
+                    <span data-i18n="accessibility.apply98">Apply Win 98 / Me</span>
+                  </button>
+                </div>
+                <p class="compat-note" id="compat-note"></p>
+              </div>
+
+              <!-- Info-card (right) -->
+              <div class="settings-card accessibility-info-card">
+                <div class="settings-card-head-mini">
+                  <span class="settings-card-mini-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M12 16v-4M12 8h.01"/>
+                    </svg>
+                  </span>
+                  <span class="settings-card-mini-title" data-i18n="accessibility.aboutCompatTitle">Про режими сумісності</span>
+                </div>
+                <p class="accessibility-info-text" data-i18n="accessibility.aboutCompatBody">Ці налаштування допомагають запустити гру на старих та сучасних системах Windows. Використовуйте рекомендовані параметри для найкращої сумісності.</p>
+              </div>
+
+            </div>
+
+            <!-- DPC fixes card -->
+            <div class="settings-card accessibility-fixes-card">
+              <div class="settings-card-head-mini">
+                <span class="settings-card-mini-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94L9.41 18.6a2 2 0 0 1-2.83-2.83L13.4 9l-5.9-5.9A4.55 4.55 0 0 0 4.05 4l4.6 4.6"/>
+                  </svg>
+                </span>
+                <span class="settings-card-mini-title" data-i18n="dpcFixes.title">Фікси для DPC</span>
+              </div>
 
             <details class="fix-item">
               <summary>
@@ -553,6 +881,35 @@
                 <button class="btn-primary btn-compact" id="btn-open-gpu-settings" data-i18n="fpsCap.openGpu">Open GPU panel</button>
               </div>
               <p class="compat-note" id="fps-cap-note"></p>
+            </details>
+
+            <details class="fix-item">
+              <summary>
+                <span class="fix-item-title" data-i18n="surround.label">Звук: handbrake/двигун зациклюється?</span>
+                <span class="fix-item-badge" data-i18n="surround.badge">5.1 / 7.1 → Stereo</span>
+              </summary>
+              <p class="settings-help fix-item-help" data-i18n-html="surround.help">
+                На системах із surround 5.1/7.1 деякі звуки гри (особливо ручник машини й двигун)
+                можуть зациклюватись і бути занадто гучними. Це обмеження аудіо-движка DP.
+                <strong>Швидкий фікс</strong>: переключити Windows на 2 канали (стерео) на час гри.
+              </p>
+              <div class="form-row fix-item-row">
+                <button class="btn-primary btn-compact" id="btn-open-sound-playback" data-i18n="surround.openPlayback">
+                  Відкрити налаштування звуку (Playback)
+                </button>
+              </div>
+              <p class="settings-help fix-item-help" data-i18n-html="surround.fallback">
+                <strong>Якщо переключити не вийшло</strong> (наприклад, 7.1-навушники Logitech G35):
+                підключіть звичайні стерео-навушники, зробіть їх default-пристроєм,
+                далі Recording → ввімкніть <em>Stereo Mix</em> та зробіть його default;
+                у властивостях Stereo Mix → «Listen to this device» → виберіть свої справжні колонки.
+              </p>
+              <div class="form-row fix-item-row">
+                <button class="btn-secondary btn-compact" id="btn-open-sound-recording" data-i18n="surround.openRecording">
+                  Відкрити Recording devices (для Stereo Mix)
+                </button>
+              </div>
+              <p class="compat-note" id="surround-note"></p>
             </details>
 
             <details class="fix-item">
@@ -607,30 +964,89 @@
               <p class="compat-note" id="capture-cursor-note"></p>
             </details>
 
+            </div><!-- /.accessibility-fixes-card -->
 
           </section>
 
           <!-- STABILITY (v1.4.0) -->
           <section class="settings-section" data-section="stability">
-            <h4 class="form-subhead" data-i18n="stability.heroTitle">Recommended Stability Mode</h4>
-            <p class="settings-help" data-i18n-html="stability.heroHelp">
-              Композитний режим для крашів навколо <strong>катсцен / loading / building transitions</strong>
-              та для безпеки сейвів. Це <strong>НЕ audio-pool патч</strong> — він спрямований на класи багів,
-              які community report'ить найчастіше (transition state, cutscene boundaries, codec/PhysX runtime).
-            </p>
-            <div class="form-row">
-              <span class="form-label" data-i18n="stability.heroStatus">Mode status</span>
-              <span class="compat-status" id="stability-mode-status">—</span>
-            </div>
-            <div class="compat-actions">
-              <button class="btn-primary" id="btn-stability-apply" data-i18n="stability.applyBtn">
-                Apply Recommended Mode
-              </button>
-              <button class="btn-secondary" id="btn-stability-revert" data-i18n="stability.revertBtn" disabled>
-                Revert
-              </button>
-            </div>
-            <p class="compat-note" id="stability-mode-note"></p>
+
+            <header class="settings-page-head">
+              <h2 class="settings-page-title" data-i18n="settingsPage.stabilityTitle">Стабільність</h2>
+              <p class="settings-page-sub" data-i18n="settingsPage.stabilitySub">Інструменти для підвищення стабільності, діагностики та сумісності гри на сучасних системах.</p>
+            </header>
+
+            <div class="stability-grid">
+              <div class="stability-main">
+
+                <!-- Hero: Recommended Stability Mode -->
+                <div class="settings-card stability-hero-card">
+                  <div class="stability-hero-row">
+                    <div class="stability-hero-emblem">
+                      <div class="stability-hero-emblem-glow"></div>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z"/>
+                        <path d="M8 13l3-3 2 4 3-5"/>
+                      </svg>
+                    </div>
+                    <div class="stability-hero-text">
+                      <h3 class="stability-hero-title" data-i18n="stability.heroTitle">Recommended Stability Mode</h3>
+                      <p class="stability-hero-help" data-i18n-html="stability.heroHelp">
+                        Композитний режим для крашів навколо <strong>катсцен / loading / building transitions</strong>
+                        та для безпеки сейвів. Це <strong>НЕ audio-pool патч</strong> — він спрямований на класи багів,
+                        які community report'ить найчастіше (transition state, cutscene boundaries, codec/PhysX runtime).
+                      </p>
+                      <div class="stability-hero-status-row">
+                        <span class="stability-hero-status-label" data-i18n="stability.heroStatus">Стан режиму</span>
+                        <span class="settings-status-pill" id="stability-mode-status-pill">
+                          <span class="settings-status-dot"></span>
+                          <span class="settings-status-text" id="stability-mode-status" data-i18n="stability.notApplied">Не застосовано</span>
+                        </span>
+                      </div>
+                      <div class="compat-actions stability-hero-actions">
+                        <button class="btn-primary" id="btn-stability-apply" data-i18n="stability.applyBtn">Apply Recommended Mode</button>
+                        <button class="btn-secondary settings-btn-with-icon" id="btn-stability-revert" data-i18n="stability.revertBtn" disabled>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/>
+                          </svg>
+                          <span>Revert</span>
+                        </button>
+                      </div>
+                      <div class="stability-hero-benefits">
+                        <span class="stability-benefit-pill">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="4" y="4" width="16" height="16" rx="2"/>
+                            <path d="M8 9h8M8 12h8M8 15h5"/>
+                          </svg>
+                          Crash dumps
+                        </span>
+                        <span class="stability-benefit-pill">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0 -18 0"/>
+                            <path d="M12 12l4-3"/>
+                          </svg>
+                          FPS cap 60
+                        </span>
+                        <span class="stability-benefit-pill">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="5" width="18" height="14" rx="2"/>
+                          </svg>
+                          DPFix borderless
+                        </span>
+                      </div>
+                      <p class="compat-note" id="stability-mode-note"></p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Stability params list card -->
+                <div class="settings-card stability-params-card">
+                  <h4 class="stability-section-title" data-i18n="stability.paramsTitle">Параметри стабільності</h4>
 
             <!-- Crash Dump Helper -->
             <details class="fix-item">
@@ -777,105 +1193,266 @@
               </details>
             </details>
 
-            <!-- Diagnostic Export -->
-            <h4 class="form-subhead" data-i18n="diagExport.title">Diagnostic Package Export</h4>
-            <p class="settings-help" data-i18n="diagExport.help">
-              Експорт zip-архіву з launcher state + результатами перевірок + game logs.
-              Без сейвів, без crash dumps (вони можуть бути великі). Корисно щоб надіслати з crash report.
-            </p>
-            <div class="compat-actions">
-              <button class="btn-primary" id="btn-diag-export" data-i18n="diagExport.btn">
-                Export Diagnostic Package
-              </button>
-            </div>
-            <p class="compat-note" id="diag-export-note"></p>
+                </div><!-- /.stability-params-card -->
+              </div><!-- /.stability-main -->
 
-            <!-- Known Risky Areas -->
-            <h4 class="form-subhead" data-i18n="risky.title">Known Risky Areas</h4>
-            <p class="settings-help" data-i18n-html="risky.intro">
-              Community-reported місця де crashes/freezes трапляються частіше. Не гарантовані причини —
-              просто паттерни.
-            </p>
-            <div class="risky-grid">
-              <div class="risky-card">
-                <div class="risky-card-title" data-i18n="risky.ep1ch6">Episode 1 / Chapter 6</div>
-                <div class="risky-card-desc" data-i18n="risky.ep1ch6Desc">Community Center area, quest timeframe transitions</div>
-              </div>
-              <div class="risky-card">
-                <div class="risky-card-title" data-i18n="risky.ep2ch9">Episode 2 / Chapter 9</div>
-                <div class="risky-card-desc" data-i18n="risky.ep2ch9Desc">Art Gallery exit, state-machine crash</div>
-              </div>
-              <div class="risky-card">
-                <div class="risky-card-title" data-i18n="risky.diner">A&amp;G Diner / Olivia</div>
-                <div class="risky-card-desc" data-i18n="risky.dinerDesc">Cutscene + voice + ambient layered audio</div>
-              </div>
-              <div class="risky-card">
-                <div class="risky-card-title" data-i18n="risky.milkbarn">Milk Barn</div>
-                <div class="risky-card-desc" data-i18n="risky.milkbarnDesc">Building exit transitions</div>
-              </div>
-              <div class="risky-card">
-                <div class="risky-card-title" data-i18n="risky.introMovie">Intro movie</div>
-                <div class="risky-card-desc" data-i18n="risky.introDesc">FMV / VC-1 codec compatibility</div>
-              </div>
+              <!-- Right column: aside -->
+              <aside class="stability-aside">
+
+                <div class="settings-card stability-aside-card">
+                  <div class="settings-card-head-mini">
+                    <span class="settings-card-mini-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                        <rect x="8" y="2" width="8" height="4" rx="1"/>
+                        <path d="M9 14l2 2 4-4"/>
+                      </svg>
+                    </span>
+                    <span class="settings-card-mini-title" data-i18n="diagExport.title">Diagnostic Package Export</span>
+                  </div>
+                  <p class="settings-card-mini-sub" data-i18n="diagExport.help">Експорт zip-архіву з launcher state + результатами перевірок + game logs. Без сейвів, без crash dumps (вони можуть бути великі). Корисно щоб надіслати з crash report.</p>
+                  <button class="btn-primary settings-btn-with-icon stability-aside-cta" id="btn-diag-export">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 4v12m0 0l-5-5m5 5l5-5M5 20h14"/>
+                    </svg>
+                    <span data-i18n="diagExport.btn">Export Diagnostic Package</span>
+                  </button>
+                  <p class="compat-note" id="diag-export-note"></p>
+                </div>
+
+                <div class="settings-card stability-aside-card">
+                  <div class="settings-card-head-mini">
+                    <span class="settings-card-mini-icon settings-card-mini-icon-warn">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <path d="M12 9v4M12 17h.01"/>
+                      </svg>
+                    </span>
+                    <span class="settings-card-mini-title" data-i18n="risky.title">Known Risky Areas</span>
+                  </div>
+                  <p class="settings-card-mini-sub" data-i18n="risky.introShort">Community-reported місця де crashes/freezes трапляються частіше. Не гарантовані причини — просто паттерни.</p>
+                  <ul class="stability-risky-list">
+                    <li class="stability-risky-item">
+                      <svg class="stability-risky-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <path d="M12 9v4M12 17h.01"/>
+                      </svg>
+                      <div class="stability-risky-text">
+                        <div class="stability-risky-title" data-i18n="risky.ep1ch6">Episode 1 / Chapter 6</div>
+                        <div class="stability-risky-desc" data-i18n="risky.ep1ch6Desc">Community Center area, quest timeframe transitions</div>
+                      </div>
+                    </li>
+                    <li class="stability-risky-item">
+                      <svg class="stability-risky-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <path d="M12 9v4M12 17h.01"/>
+                      </svg>
+                      <div class="stability-risky-text">
+                        <div class="stability-risky-title" data-i18n="risky.ep2ch9">Episode 2 / Chapter 9</div>
+                        <div class="stability-risky-desc" data-i18n="risky.ep2ch9Desc">Art Gallery exit, state-machine crash</div>
+                      </div>
+                    </li>
+                    <li class="stability-risky-item">
+                      <svg class="stability-risky-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <path d="M12 9v4M12 17h.01"/>
+                      </svg>
+                      <div class="stability-risky-text">
+                        <div class="stability-risky-title" data-i18n="risky.diner">A&amp;G Diner / Olivia scenes</div>
+                        <div class="stability-risky-desc" data-i18n="risky.dinerDesc">Cutscene + voice + ambient layered audio</div>
+                      </div>
+                    </li>
+                    <li class="stability-risky-item">
+                      <svg class="stability-risky-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <path d="M12 9v4M12 17h.01"/>
+                      </svg>
+                      <div class="stability-risky-text">
+                        <div class="stability-risky-title" data-i18n="risky.milkbarn">Milk Barn</div>
+                        <div class="stability-risky-desc" data-i18n="risky.milkbarnDesc">Building exit transitions</div>
+                      </div>
+                    </li>
+                    <li class="stability-risky-item">
+                      <svg class="stability-risky-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <path d="M12 9v4M12 17h.01"/>
+                      </svg>
+                      <div class="stability-risky-text">
+                        <div class="stability-risky-title" data-i18n="risky.introMovie">Intro movie</div>
+                        <div class="stability-risky-desc" data-i18n="risky.introDesc">FMV / VC-1 codec compatibility</div>
+                      </div>
+                    </li>
+                  </ul>
+                  <p class="stability-risky-tips" data-i18n-html="risky.tips">
+                    <strong>Рекомендовано:</strong> Recommended Stability Mode • Save Backup •
+                    якщо crash повторюється — спробуй smoking/sleeping in-game щоб advance time.
+                  </p>
+                </div>
+
+              </aside>
             </div>
-            <p class="settings-help risky-tips" data-i18n-html="risky.tips">
-              <strong>Рекомендовано:</strong> Recommended Stability Mode • Save Backup •
-              якщо crash повторюється — спробуй smoking/sleeping in-game щоб advance time.
-            </p>
 
           </section>
 
           <!-- PRESETS (v1.4) -->
           <section class="settings-section" data-section="presets">
-            <h4 class="form-subhead" data-i18n="presetsTab.title">Rendering Preset</h4>
-            <p class="settings-help" data-i18n-html="presetsTab.help">
-              Переключайся між трьома render-конфігураціями без проходження wizard'а.
-              Усі пресети зберігають DPfix hex-патчі у DP.exe (widescreen / FOV / 4GB) — змінюється
-              лише <strong>як DP.exe ходить у D3D9</strong>: через DXVK (Vulkan), через native D3D9, або обидвa.
-            </p>
 
-            <div class="firstrun-presets" id="settings-preset-picker">
-              <label class="firstrun-preset">
+            <header class="settings-page-head settings-page-head-with-aside">
+              <div class="settings-page-head-text">
+                <h2 class="settings-page-title" data-i18n="presetsTab.pageTitle">Пресети рендеру</h2>
+                <p class="settings-page-sub" data-i18n-html="presetsTab.pageSub">
+                  Переключайтесь між готовими конфігураціями рендеру. Усі пресети зберігають
+                  DPfix hex-патчі у DP.exe (widescreen / FOV / 4GB) — змінюється лише
+                  <strong>як DP.exe ходить у D3D9</strong> через DXVK (Vulkan), через native D3D9, або обидва.
+                </p>
+              </div>
+              <a class="settings-help-card" id="presets-help-link" href="#" role="button">
+                <span class="settings-help-card-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>
+                  </svg>
+                </span>
+                <span class="settings-help-card-text">
+                  <span class="settings-help-card-title" data-i18n="presetsTab.helpCardTitle">Детальніше про пресети</span>
+                  <span class="settings-help-card-sub" data-i18n="presetsTab.helpCardSub">Який пресет обрати?</span>
+                </span>
+                <svg class="settings-help-card-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M7 17L17 7M9 7h8v8"/>
+                </svg>
+              </a>
+            </header>
+
+            <div class="preset-cards" id="settings-preset-picker">
+              <label class="preset-card" data-preset="dpfix-dxvk">
                 <input type="radio" name="settings-preset" value="dpfix-dxvk">
-                <div class="firstrun-preset-body">
-                  <div class="firstrun-preset-name" data-i18n="fr.presetDpfixDxvk">DPfix + DXVK</div>
-                  <div class="firstrun-preset-tag" data-i18n="fr.presetDpfixDxvkTag">Optimal</div>
-                  <div class="firstrun-preset-desc" data-i18n="fr.presetDpfixDxvkDesc">
-                    Vulkan + DPfix wrapper. Найстабільніше, повільніший first-load.
-                  </div>
-                </div>
+                <span class="preset-card-radio"></span>
+                <span class="preset-card-body">
+                  <span class="preset-card-row">
+                    <span class="preset-card-name" data-i18n="fr.presetDpfixDxvk">DPfix + DXVK</span>
+                    <span class="preset-tag preset-tag-ok" data-i18n="fr.presetDpfixDxvkTag">Оптимально</span>
+                  </span>
+                  <span class="preset-card-desc" data-i18n="fr.presetDpfixDxvkDesc">
+                    Vulkan-рендерер + DPfix widescreen/FOV/HUD-фікси. Найстабільніше для більшості систем,
+                    але перший запуск повільніший (DXVK компілює shader cache).
+                  </span>
+                </span>
+                <span class="preset-card-stack">
+                  <span class="preset-stack-pill">Vulkan</span>
+                  <span class="preset-stack-pill">DPfix</span>
+                  <span class="preset-stack-pill">Widescreen/FOV</span>
+                </span>
               </label>
-              <label class="firstrun-preset">
+
+              <label class="preset-card" data-preset="dxvk-only">
                 <input type="radio" name="settings-preset" value="dxvk-only">
-                <div class="firstrun-preset-body">
-                  <div class="firstrun-preset-name" data-i18n="fr.presetDxvkOnly">DXVK тільки</div>
-                  <div class="firstrun-preset-tag" data-i18n="fr.presetDxvkOnlyTag">Швидке завантаження</div>
-                  <div class="firstrun-preset-desc" data-i18n="fr.presetDxvkOnlyDesc">
-                    Vulkan без DPfix wrapper. Без widescreen/FOV, швидше після першого запуску.
-                  </div>
-                </div>
+                <span class="preset-card-radio"></span>
+                <span class="preset-card-body">
+                  <span class="preset-card-row">
+                    <span class="preset-card-name" data-i18n="fr.presetDxvkOnly">DXVK тільки</span>
+                    <span class="preset-tag preset-tag-warn" data-i18n="fr.presetDxvkOnlyTag">Vulkan-рендерер</span>
+                  </span>
+                  <span class="preset-card-desc" data-i18n="fr.presetDxvkOnlyDesc">
+                    Vulkan-рендерер без DPfix wrapper. Перший запуск повільніший (DXVK компілює shader cache),
+                    далі стабільно. Без widescreen/FOV-фіксів, але всі DPfix exe-патчі (4GB, etc.) лишаються.
+                  </span>
+                </span>
+                <span class="preset-card-stack">
+                  <span class="preset-stack-pill">Vulkan</span>
+                  <span class="preset-stack-pill">Без DPfix wrapper</span>
+                  <span class="preset-stack-pill">4GB</span>
+                </span>
               </label>
-              <label class="firstrun-preset">
+
+              <label class="preset-card" data-preset="dpfix-only">
                 <input type="radio" name="settings-preset" value="dpfix-only">
-                <div class="firstrun-preset-body">
-                  <div class="firstrun-preset-name" data-i18n="fr.presetDpfixOnly">DPfix тільки</div>
-                  <div class="firstrun-preset-tag" data-i18n="fr.presetDpfixOnlyTag">Native D3D9</div>
-                  <div class="firstrun-preset-desc" data-i18n="fr.presetDpfixOnlyDesc">
-                    Native d3d9 з System32. Без Vulkan, мінімум залежностей.
-                  </div>
-                </div>
+                <span class="preset-card-radio"></span>
+                <span class="preset-card-body">
+                  <span class="preset-card-row">
+                    <span class="preset-card-name" data-i18n="fr.presetDpfixOnly">DPfix тільки</span>
+                    <span class="preset-tag preset-tag-red" data-i18n="fr.presetDpfixOnlyTag">Швидке завантаження</span>
+                  </span>
+                  <span class="preset-card-desc" data-i18n="fr.presetDpfixOnlyDesc">
+                    DPfix із нативним d3d9 з System32. Без shader-компіляції — завжди швидке завантаження.
+                    Підходить якщо DXVK дає проблеми або стара GPU без Vulkan.
+                  </span>
+                </span>
+                <span class="preset-card-stack">
+                  <span class="preset-stack-pill">Native D3D9</span>
+                  <span class="preset-stack-pill">DPfix</span>
+                  <span class="preset-stack-pill" data-i18n="presetsTab.stackCompat">Сумісність</span>
+                </span>
+              </label>
+
+              <label class="preset-card preset-card-original" data-preset="original-files">
+                <input type="radio" name="settings-preset" value="original-files">
+                <span class="preset-card-radio"></span>
+                <span class="preset-card-body">
+                  <span class="preset-card-row">
+                    <span class="preset-card-name" data-i18n="fr.presetOriginal">Оригінальні файли</span>
+                    <span class="preset-tag preset-tag-neutral" data-i18n="fr.presetOriginalTag">Vanilla Steam</span>
+                  </span>
+                  <span class="preset-card-desc" data-i18n="fr.presetOriginalDesc">
+                    Запускає перевірку цілісності файлів у Steam — повертає DP.exe, d3d9.dll та інші
+                    файли гри до vanilla-стану.
+                  </span>
+                </span>
+                <span class="preset-card-stack">
+                  <span class="preset-stack-pill">Steam validate</span>
+                </span>
               </label>
             </div>
 
-            <div class="compat-actions">
-              <button class="btn-primary" id="btn-settings-apply-preset" data-i18n="presetsTab.applyBtn">
-                Apply Selected Preset
+            <div class="preset-actions">
+              <button class="btn-primary settings-btn-with-icon" id="btn-settings-apply-preset">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M5 12l5 5 9-10"/>
+                </svg>
+                <span data-i18n="presetsTab.applyBtn">Застосувати вибраний пресет</span>
               </button>
-              <button class="btn-secondary" id="btn-settings-detect-preset" data-i18n="presetsTab.detectBtn">
-                Detect Current
-              </button>
+              <button class="btn-secondary" id="btn-settings-detect-preset" data-i18n="presetsTab.detectBtn">Визначити поточний</button>
+              <span class="preset-current-line" id="preset-current-line">
+                <span class="preset-current-dot"></span>
+                <span data-i18n="presetsTab.current">Поточний</span><span>: </span>
+                <span class="preset-current-val" id="preset-current-val">—</span>
+              </span>
             </div>
             <p class="compat-note" id="settings-preset-status"></p>
+
+            <div class="preset-info-row">
+              <div class="preset-info-card">
+                <svg class="preset-info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 16v-4M12 8h.01"/>
+                </svg>
+                <div class="preset-info-text">
+                  <div class="preset-info-title" data-i18n="presetsTab.howWorkTitle">Як працюють пресети?</div>
+                  <div class="preset-info-body" data-i18n="presetsTab.howWorkBody">Пресети змінюють спосіб рендеру гри та роботу DPfix. Ви завжди можете повернутися до стандартних налаштувань або спробувати інший пресет.</div>
+                </div>
+              </div>
+              <div class="preset-info-card preset-info-card-warn">
+                <svg class="preset-info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <path d="M12 9v4M12 17h.01"/>
+                </svg>
+                <div class="preset-info-text">
+                  <div class="preset-info-body" data-i18n="presetsTab.warnBody">Зміна пресету може вплинути на продуктивність та сумісність. Рекомендуємо протестувати різні варіанти.</div>
+                </div>
+              </div>
+            </div>
           </section>
 
           <!-- DXVK -->
@@ -938,78 +1515,221 @@
 
           <!-- ABOUT -->
           <section class="settings-section" data-section="about">
-            <div class="about-card">
+            <div class="about-grid">
 
-              <div class="about-hero">
-                <div class="about-logo">
-                  <svg viewBox="0 0 32 32" fill="none" stroke="currentColor"
-                       stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M16 4 L11 12 L13.2 12 L9 18 L11.5 18 L7 24 L25 24 L20.5 18 L23 18 L18.8 12 L21 12 Z"/>
-                    <rect x="14.7" y="24" width="2.6" height="3.5" fill="currentColor" stroke="none"/>
-                  </svg>
+              <!-- LEFT COLUMN — main content -->
+              <div class="about-main">
+
+                <!-- Hero card: logo + title + version + intro -->
+                <div class="settings-card about-hero-card">
+                  <div class="about-hero">
+                    <div class="about-hero-logo">
+                      <img src="../assets/DP_LOGO.png" alt="DP1" draggable="false">
+                    </div>
+                    <div class="about-hero-text">
+                      <h2 class="about-hero-title" data-i18n="about.appTitle">Deadly Premonition — фанатський лаунчер</h2>
+                      <span class="about-hero-version" id="about-version">v2.0.0</span>
+                      <p class="about-hero-intro" data-i18n-html="about.intro">
+                        Це <strong>фанатський лаунчер</strong>, створений з однією метою: зробити гру
+                        <em>Deadly Premonition: The Director's Cut</em> максимально комфортною.
+                        Одне натискання кнопки LAUNCH замість годинного ритуалу з DPfix,
+                        4GB Patch, DXVK і налаштуваннями реєстру. Усі необхідні компоненти лаунчер
+                        завантажує та встановлює автоматично.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div class="about-hero-text">
-                  <h3 data-i18n="about.appTitle">Deadly Premonition · Fan Launcher</h3>
-                  <p class="about-version">v1.0.0</p>
+
+                <!-- Components used -->
+                <h4 class="about-section-title" data-i18n="about.components">Що використовується</h4>
+                <div class="about-components">
+                  <div class="settings-card about-comp-card" data-comp="dpfix">
+                    <div class="about-comp-icon about-comp-icon-img">
+                      <img src="../assets/icons/about/dpfix-wrench-red.svg" alt="" draggable="false">
+                    </div>
+                    <div class="about-comp-body">
+                      <div class="about-comp-head">
+                        <span class="about-comp-name">DPFix v0.9.5</span>
+                        <span class="preset-tag preset-tag-red" data-i18n="about.tagGfxFix">Фікс графіки</span>
+                      </div>
+                      <div class="about-comp-by">Peter «Durante» Thoman</div>
+                      <div class="about-comp-desc" data-i18n="about.dpfixDesc">
+                        Графічний фіксер — кастомні роздільні здатності, anti-aliasing,
+                        тіні, SSAO, виправлення інтерфейсу.
+                      </div>
+                      <a class="about-comp-more" data-link="https://www.pcgamingwiki.com/wiki/Deadly_Premonition:_The_Director%27s_Cut#DPfix">
+                        <span data-i18n="about.compMore">Докладніше</span>
+                        <img src="../assets/icons/about/chevron-right-gray.svg" alt="" draggable="false">
+                      </a>
+                    </div>
+                  </div>
+                  <div class="settings-card about-comp-card" data-comp="4gb">
+                    <div class="about-comp-icon about-comp-icon-img">
+                      <img src="../assets/icons/about/patch-chip-gold.svg" alt="" draggable="false">
+                    </div>
+                    <div class="about-comp-body">
+                      <div class="about-comp-head">
+                        <span class="about-comp-name">4GB LAA Patch</span>
+                        <span class="preset-tag preset-tag-warn" data-i18n="about.tagMemPatch">Патч пам'яті</span>
+                      </div>
+                      <div class="about-comp-by">NTCore (Daniel Pistelli)</div>
+                      <div class="about-comp-desc" data-i18n="about.fourGbDesc">
+                        Знімає обмеження 2 ГБ оперативної пам'яті для 32-бітного процесу гри.
+                      </div>
+                      <a class="about-comp-more" data-link="https://ntcore.com/?page_id=371">
+                        <span data-i18n="about.compMore">Докладніше</span>
+                        <img src="../assets/icons/about/chevron-right-gray.svg" alt="" draggable="false">
+                      </a>
+                    </div>
+                  </div>
+                  <div class="settings-card about-comp-card" data-comp="dxvk">
+                    <div class="about-comp-icon about-comp-icon-img">
+                      <img src="../assets/icons/about/dxvk-bolt-purple.svg" alt="" draggable="false">
+                    </div>
+                    <div class="about-comp-body">
+                      <div class="about-comp-head">
+                        <span class="about-comp-name">DXVK 2.7.1</span>
+                        <span class="preset-tag preset-tag-violet">D3D9 → Vulkan</span>
+                      </div>
+                      <div class="about-comp-by">Philip «doitsujin» Rebohle</div>
+                      <div class="about-comp-desc" data-i18n="about.dxvkDesc">
+                        Vulkan-рендерер для Direct3D 9 — стабільність, продуктивність,
+                        сучасний рендеринг замість застарілих DirectX-викликів.
+                      </div>
+                      <a class="about-comp-more" data-link="https://github.com/doitsujin/dxvk">
+                        <span data-i18n="about.compMore">Докладніше</span>
+                        <img src="../assets/icons/about/chevron-right-gray.svg" alt="" draggable="false">
+                      </a>
+                    </div>
+                  </div>
                 </div>
+
+                <!-- Author + thanks -->
+                <div class="settings-card about-author-card">
+                  <div class="about-author-grid">
+                    <div class="about-author-left">
+                      <div class="about-author-head" data-i18n="about.authorLabel">АВТОР ЛАУНЧЕРА</div>
+                      <div class="about-author-row">
+                        <div class="about-author-avatar about-author-avatar-img">
+                          <img src="../assets/icons/about/author-user-red.svg" alt="" draggable="false">
+                        </div>
+                        <div class="about-author-info">
+                          <div class="about-author-name">Dmytro Bidlov</div>
+                          <p class="about-author-line" data-i18n="about.authorLine2">
+                            Створено з любов'ю та повагою до української фанатської спільноти Deadly Premonition.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="about-author-thanks">
+                      <img class="about-thanks-img" src="../assets/icons/about/thanks-heart-red.svg" alt="" draggable="false">
+                      <div class="about-thanks-text">
+                        <div class="about-thanks-head" data-i18n="about.thanksLabel">Дякую Swery (Hidetaka Suehiro)</div>
+                        <div class="about-thanks-sub" data-i18n="about.thanksSub">за безсмертну, абсурдну й щемливу гру.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Disclaimer -->
+                <div class="settings-card about-disclaimer-card">
+                  <div class="about-disclaimer-head">
+                    <img class="about-disclaimer-icon" src="../assets/icons/about/important-shield-red.svg" alt="" draggable="false">
+                    <span data-i18n="about.disclaimerLabel">ВАЖЛИВА ІНФОРМАЦІЯ</span>
+                  </div>
+                  <p class="about-disclaimer-body" data-i18n="about.disclaimerShort">
+                    Цей лаунчер не пов'язаний, не схвалений і не підтримується компаніями
+                    Access Games, Rising Star Games або Toybox Inc.
+                    Усі права на Deadly Premonition: The Director's Cut належать відповідним правовласникам.
+                  </p>
+                </div>
+
               </div>
 
-              <p class="about-intro" data-i18n-html="about.intro">
-                Це <strong>фанатський лаунчер</strong>, створений з однією метою: зробити
-                гру <em>Deadly Premonition: The Director's Cut</em> максимально
-                комфортною. Одне натискання кнопки LAUNCH замість годинного ритуалу з DPfix,
-                4GB Patch, DXVK і налаштуваннями реєстру. Усі необхідні компоненти лаунчер
-                завантажує та встановлює автоматично.
-              </p>
+              <!-- RIGHT COLUMN — sidebar -->
+              <aside class="about-aside">
 
-              <h4 class="about-subhead" data-i18n="about.components">Що використовується</h4>
-              <ul class="about-credits">
-                <li>
-                  <span class="about-credit-name">DPFix v0.9.5</span>
-                  <span class="about-credit-by">Peter «Durante» Thoman</span>
-                  <span class="about-credit-desc" data-i18n="about.dpfixDesc">
-                    Графічний фіксер — кастомні роздільні здатності, anti-aliasing,
-                    тіні, SSAO, виправлення інтерфейсу.
-                  </span>
-                </li>
-                <li>
-                  <span class="about-credit-name">4GB LAA Patch</span>
-                  <span class="about-credit-by">NTCore (Daniel Pistelli)</span>
-                  <span class="about-credit-desc" data-i18n="about.fourGbDesc">
-                    Знімає обмеження 2 ГБ оперативної пам'яті для 32-бітного процесу гри.
-                  </span>
-                </li>
-                <li>
-                  <span class="about-credit-name">DXVK 2.7.1</span>
-                  <span class="about-credit-by">Philip «doitsujin» Rebohle</span>
-                  <span class="about-credit-desc" data-i18n="about.dxvkDesc">
-                    Vulkan-рендерер для Direct3D 9 — стабільність, продуктивність,
-                    сучасний рендеринг замість застарілих DirectX-викликів.
-                  </span>
-                </li>
-              </ul>
+                <!-- Components status -->
+                <div class="settings-card about-aside-card">
+                  <div class="about-aside-title" data-i18n="about.componentsStatus">Статус компонентів</div>
+                  <ul class="about-status-list">
+                    <li>
+                      <img class="about-status-dot-img" src="../assets/icons/about/status-dot-green.svg" alt="" draggable="false">
+                      <span class="about-status-name">DPFix</span>
+                      <span class="about-status-state" data-i18n="about.statusAvailable">Доступний</span>
+                    </li>
+                    <li>
+                      <img class="about-status-dot-img" src="../assets/icons/about/status-dot-green.svg" alt="" draggable="false">
+                      <span class="about-status-name">DXVK</span>
+                      <span class="about-status-state" data-i18n="about.statusAvailable">Доступний</span>
+                    </li>
+                    <li>
+                      <img class="about-status-dot-img" src="../assets/icons/about/status-dot-green.svg" alt="" draggable="false">
+                      <span class="about-status-name">4GB LAA Patch</span>
+                      <span class="about-status-state" data-i18n="about.statusAvailable">Доступний</span>
+                    </li>
+                  </ul>
+                </div>
 
-              <h4 class="about-subhead" data-i18n="about.author">Автор лаунчера</h4>
-              <div class="about-author">
-                <p data-i18n-html="about.authorLine">
-                  <strong>Dmytro Bidlov</strong> — створено з любов'ю від
-                  <span class="about-ua">української 🇺🇦 спільноти фанатів</span>
-                  <em>Deadly Premonition</em>.
-                </p>
-                <p class="about-thanks" data-i18n="about.thanks">
-                  Спасибі Swery (Hidetaka Suehiro) за безсмертну, абсурдну і
-                  щемливу гру.
-                </p>
-              </div>
+                <!-- Quick links -->
+                <div class="settings-card about-aside-card">
+                  <div class="about-aside-title" data-i18n="about.quickLinks">Швидкі посилання</div>
+                  <ul class="about-links-list">
+                    <li>
+                      <a class="about-link-row" data-link="https://t.me/LittleBitUA">
+                        <img class="about-link-icon-img" src="../assets/icons/about/link-user-red.svg" alt="" draggable="false">
+                        <span class="about-link-text" data-i18n="about.linkAuthor">Сторінка автора</span>
+                        <img class="about-link-chev" src="../assets/icons/about/chevron-right-gray.svg" alt="" draggable="false">
+                      </a>
+                    </li>
+                    <li>
+                      <a class="about-link-row" data-link="https://github.com/dplauncher/DP1-Launcher">
+                        <img class="about-link-icon-img" src="../assets/icons/about/link-github-red.svg" alt="" draggable="false">
+                        <span class="about-link-text" data-i18n="about.linkRepo">GitHub репозиторій</span>
+                        <img class="about-link-chev" src="../assets/icons/about/chevron-right-gray.svg" alt="" draggable="false">
+                      </a>
+                    </li>
+                    <li>
+                      <a class="about-link-row" data-link="https://github.com/dplauncher/DP1-Launcher/issues">
+                        <img class="about-link-icon-img" src="../assets/icons/about/link-alert-red.svg" alt="" draggable="false">
+                        <span class="about-link-text" data-i18n="about.linkIssue">Повідомити про проблему</span>
+                        <img class="about-link-chev" src="../assets/icons/about/chevron-right-gray.svg" alt="" draggable="false">
+                      </a>
+                    </li>
+                    <li>
+                      <a class="about-link-row" data-link="https://t.me/LittleBitUA">
+                        <img class="about-link-icon-img" src="../assets/icons/about/link-heart-red.svg" alt="" draggable="false">
+                        <span class="about-link-text" data-i18n="about.linkSupport">Підтримати проєкт</span>
+                        <img class="about-link-chev" src="../assets/icons/about/chevron-right-gray.svg" alt="" draggable="false">
+                      </a>
+                    </li>
+                  </ul>
+                </div>
 
-              <p class="about-disclaimer" data-i18n="about.disclaimer">
-                Цей лаунчер не пов’язаний, не схвалений і не підтримується компаніями
-                Access Games, Rising Star Games або Toybox Inc. Усі права на
-                Deadly Premonition: The Director's Cut належать відповідним правовласникам.
-                Це безкоштовний фанатський проєкт, створений з відкритим серцем.
-              </p>
+                <!-- Info -->
+                <div class="settings-card about-aside-card">
+                  <div class="about-aside-title" data-i18n="about.infoTitle">Інформація</div>
+                  <ul class="about-info-list">
+                    <li>
+                      <span class="about-info-key" data-i18n="about.infoVersion">Версія лаунчера</span>
+                      <span class="about-info-val" id="about-info-version">2.0.0</span>
+                    </li>
+                    <li>
+                      <span class="about-info-key" data-i18n="about.infoPlatform">Платформа</span>
+                      <span class="about-info-val">Windows</span>
+                    </li>
+                    <li>
+                      <span class="about-info-key" data-i18n="about.infoType">Тип</span>
+                      <span class="about-info-val" data-i18n="about.infoTypeFan">Фанатський інструмент</span>
+                    </li>
+                    <li>
+                      <span class="about-info-key" data-i18n="about.infoLang">Мова інтерфейсу</span>
+                      <span class="about-info-val" id="about-info-lang" data-i18n="about.langValue">Українська</span>
+                    </li>
+                  </ul>
+                </div>
 
-
+              </aside>
             </div>
           </section>
 
@@ -1017,8 +1737,21 @@
       </div>
 
       <footer class="settings-foot">
-        <button class="btn-secondary" id="btn-reset" data-i18n="settings.restore">Restore Defaults</button>
-        <button class="btn-primary btn-save" id="btn-apply" data-i18n="settings.save">Save Changes</button>
+        <button class="btn-secondary settings-btn-with-icon" id="btn-reset">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/>
+          </svg>
+          <span data-i18n="settings.restore">Restore Defaults</span>
+        </button>
+        <button class="btn-primary btn-save settings-btn-with-icon" id="btn-apply">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <path d="M17 21v-8H7v8M7 3v5h8"/>
+          </svg>
+          <span data-i18n="settings.save">Save Changes</span>
+        </button>
       </footer>
     </aside>
 
@@ -1039,7 +1772,7 @@
         </header>
         <div class="dash-body">
           <div class="update-version-row">
-            <span class="update-version-num" id="dash-update-num">v1.0.0</span>
+            <span class="update-version-num" id="dash-update-num">v2.0.0</span>
             <span class="update-version-tag" id="dash-update-tag" data-i18n="dash.upToDate">Up to date</span>
           </div>
           <p class="update-version-date" id="dash-update-date">—</p>
@@ -1144,21 +1877,65 @@
        FIRST-RUN SETUP MODAL  (shown when gamePath not configured)
   ════════════════════════════════════════════════════════════ -->
   <div class="firstrun-overlay hidden" id="firstrun-overlay" data-step="1">
-    <div class="firstrun-card">
+    <div class="firstrun-card firstrun-card-v2">
       <div class="firstrun-aura"></div>
+      <div class="firstrun-atmosphere" aria-hidden="true"></div>
 
-      <header class="firstrun-head">
-        <div class="firstrun-logo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5L12 3z"/>
-          </svg>
+      <!-- Top-right close button (only shown on step 2 — step 1 must complete). -->
+      <button class="firstrun-close fr-close-img" id="btn-firstrun-close" type="button"
+              aria-label="Закрити" data-i18n-title="fr.close">
+        <img src="../assets/icons/step2/close-x-dark.svg" alt="" draggable="false">
+      </button>
+
+      <header class="firstrun-head firstrun-head-default">
+        <div class="firstrun-logo fr-icon-img-wrap fr-logo-spark">
+          <img class="fr-icon-img" src="../assets/icons/step2/spark-red-circle.svg" alt="" draggable="false">
         </div>
-        <div>
-          <h2 class="firstrun-title" data-i18n="fr.welcome">Раді Вас бачити!</h2>
+        <div class="firstrun-head-text">
+          <h2 class="firstrun-title" data-i18n="fr.welcome">Раді вас бачити!</h2>
           <p class="firstrun-sub" data-i18n="fr.sub">Налаштуємо вашу гру за хвилину</p>
         </div>
       </header>
+
+      <header class="firstrun-head firstrun-head-done">
+        <div class="firstrun-logo fr-icon-img-wrap fr-logo-spark fr-logo-spark-green">
+          <img class="fr-icon-img" src="../assets/icons/step3/success-spark-green.svg" alt="" draggable="false">
+        </div>
+        <div class="firstrun-head-text">
+          <h2 class="firstrun-title fr-title-done" data-i18n="fr.doneTitle">Гру налаштовано!</h2>
+          <p class="firstrun-sub firstrun-sub-natural fr-sub-done" data-i18n="fr.doneSub">Deadly Premonition готова до запуску</p>
+        </div>
+      </header>
+
+      <!-- Admin gate (shown FIRST when launcher isn't running elevated; some
+           install steps — DXVK copy to SysWOW64, compatibility-mode registry
+           writes — need admin, and partial installs leave the wizard in a
+           confusing half-done state). -->
+      <section class="firstrun-admin-gate" id="firstrun-admin-gate" hidden>
+        <div class="firstrun-admin-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+        </div>
+        <h3 class="firstrun-admin-title" data-i18n="fr.admin.title">
+          Потрібні права адміністратора
+        </h3>
+        <p class="firstrun-admin-body" data-i18n="fr.admin.body">
+          Для встановлення всіх необхідних компонентів (DXVK у SysWOW64,
+          режим сумісності, патчі) лаунчер має бути запущений від адміністратора.
+          Інакше частина кроків провалиться і налаштування доведеться починати спочатку.
+        </p>
+        <div class="firstrun-admin-actions">
+          <button class="btn-primary" id="btn-firstrun-relaunch-admin" data-i18n="fr.admin.relaunch">
+            Перезапустити від адміністратора
+          </button>
+          <button class="btn-link" id="btn-firstrun-admin-skip" data-i18n="fr.admin.skip">
+            Продовжити без адміна
+          </button>
+        </div>
+      </section>
 
       <!-- Step indicator -->
       <div class="firstrun-stepper">
@@ -1201,19 +1978,16 @@
         </div>
 
         <div class="firstrun-dir">
-          <div class="firstrun-dir-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-            </svg>
+          <div class="firstrun-dir-icon fr-icon-img-wrap">
+            <img class="fr-icon-img" src="../assets/icons/folder-red.svg" alt="" draggable="false">
           </div>
           <div class="firstrun-dir-info">
-            <div class="firstrun-dir-path" id="firstrun-dir-path" data-i18n="fr.notSelected">— ще не вибрано —</div>
+            <div class="firstrun-dir-path" id="firstrun-dir-path" data-i18n="fr.pickPrompt">Вкажіть папку з грою</div>
             <div class="firstrun-dir-hint" id="firstrun-dir-hint" data-i18n-html="fr.expectExe">
               Очікується <code>DP.exe</code> або <code>DeadlyPremonition.exe</code>
             </div>
           </div>
-          <button class="btn-secondary" id="btn-firstrun-pick" data-i18n="fr.browse">Огляд</button>
+          <button class="btn-secondary firstrun-dir-btn" id="btn-firstrun-pick" data-i18n="fr.browse">Огляд</button>
         </div>
       </section>
 
@@ -1223,51 +1997,90 @@
           <span data-i18n="fr.componentsHeader">Компоненти для встановлення</span>
         </div>
         <div class="firstrun-comps">
-          <div class="firstrun-comp" id="frc-dpfix">
-            <div class="firstrun-comp-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/>
-              </svg>
+          <div class="firstrun-comp" id="frc-dpfix" data-comp="dpfix">
+            <div class="firstrun-comp-icon fr-icon-img-wrap">
+              <img class="fr-icon-img" src="../assets/icons/gear-red.svg" alt="" draggable="false">
             </div>
             <div class="firstrun-comp-info">
-              <div class="firstrun-comp-name">DPFix v0.9.5 <span class="firstrun-comp-author">· Durante</span></div>
-              <div class="firstrun-comp-status" data-i18n="fr.statusWaiting">Очікує</div>
+              <div class="firstrun-comp-name">DPFix v0.9.5</div>
+              <div class="firstrun-comp-meta">
+                <span class="firstrun-comp-author">Durante</span>
+                <span class="firstrun-comp-dot">·</span>
+                <span class="firstrun-comp-desc" data-i18n="fr.compDpfixDesc">Фікси та поліпшення гри</span>
+              </div>
               <div class="firstrun-comp-bar"><div class="firstrun-comp-fill"></div></div>
+            </div>
+            <div class="firstrun-comp-pill" data-state="waiting">
+              <span class="firstrun-comp-dot-pill"></span>
+              <span class="firstrun-comp-status" data-i18n="fr.statusWaiting">Очікує</span>
             </div>
           </div>
-          <div class="firstrun-comp" id="frc-4gb">
-            <div class="firstrun-comp-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="4" y="6" width="16" height="12" rx="2"/>
-                <path d="M8 10v4M12 10v4M16 10v4"/>
-              </svg>
+          <div class="firstrun-comp" id="frc-4gb" data-comp="4gb">
+            <div class="firstrun-comp-icon fr-icon-img-wrap">
+              <img class="fr-icon-img" src="../assets/icons/chip-blue.svg" alt="" draggable="false">
             </div>
             <div class="firstrun-comp-info">
-              <div class="firstrun-comp-name">4GB LAA Patch <span class="firstrun-comp-author">· NTCore</span></div>
-              <div class="firstrun-comp-status" data-i18n="fr.statusWaiting">Очікує</div>
+              <div class="firstrun-comp-name">4GB LAA Patch</div>
+              <div class="firstrun-comp-meta">
+                <span class="firstrun-comp-author">NTCore</span>
+                <span class="firstrun-comp-dot">·</span>
+                <span class="firstrun-comp-desc" data-i18n="fr.comp4gbDesc">4GB Large Address Aware</span>
+              </div>
               <div class="firstrun-comp-bar"><div class="firstrun-comp-fill"></div></div>
+            </div>
+            <div class="firstrun-comp-pill" data-state="waiting">
+              <span class="firstrun-comp-dot-pill"></span>
+              <span class="firstrun-comp-status" data-i18n="fr.statusWaiting">Очікує</span>
             </div>
           </div>
-          <div class="firstrun-comp" id="frc-dxvk">
-            <div class="firstrun-comp-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>
-              </svg>
+          <div class="firstrun-comp" id="frc-dxvk" data-comp="dxvk">
+            <div class="firstrun-comp-icon fr-icon-img-wrap">
+              <img class="fr-icon-img" src="../assets/icons/bolt-purple.svg" alt="" draggable="false">
             </div>
             <div class="firstrun-comp-info">
-              <div class="firstrun-comp-name">DXVK v2.7.1 <span class="firstrun-comp-author">· doitsujin</span></div>
-              <div class="firstrun-comp-status" data-i18n="fr.statusWaiting">Очікує</div>
+              <div class="firstrun-comp-name">DXVK v2.7.1</div>
+              <div class="firstrun-comp-meta">
+                <span class="firstrun-comp-author">doitsujin</span>
+                <span class="firstrun-comp-dot">·</span>
+                <span class="firstrun-comp-desc" data-i18n="fr.compDxvkDesc">Сумісність з Direct3D</span>
+              </div>
               <div class="firstrun-comp-bar"><div class="firstrun-comp-fill"></div></div>
+            </div>
+            <div class="firstrun-comp-pill" data-state="waiting">
+              <span class="firstrun-comp-dot-pill"></span>
+              <span class="firstrun-comp-status" data-i18n="fr.statusWaiting">Очікує</span>
             </div>
           </div>
         </div>
       </section>
 
+      <!-- Summary strip (4 compact stats) -->
+      <div class="fr-summary-bar">
+        <div class="fr-summary-item">
+          <img class="fr-summary-icon-img" src="../assets/icons/layers-red.svg" alt="" draggable="false">
+          <span data-i18n="fr.summaryComps">3 компоненти</span>
+        </div>
+        <div class="fr-summary-item">
+          <img class="fr-summary-icon-img" src="../assets/icons/download-blue.svg" alt="" draggable="false">
+          <span data-i18n="fr.summarySize">приблизний розмір: 68 МБ</span>
+        </div>
+        <div class="fr-summary-item">
+          <img class="fr-summary-icon-img" src="../assets/icons/shield-green.svg" alt="" draggable="false">
+          <span data-i18n="fr.summaryBackups">резервні копії буде створено</span>
+        </div>
+        <div class="fr-summary-item">
+          <img class="fr-summary-icon-img" src="../assets/icons/gear-violet.svg" alt="" draggable="false">
+          <span data-i18n="fr.summaryAutoCfg">налаштування застосуються автоматично</span>
+        </div>
+      </div>
+
+      <div class="firstrun-info-banner">
+        <img class="firstrun-info-badge-img" src="../assets/icons/info-blue.svg" alt="" draggable="false">
+        <span data-i18n-html="fr.infoBanner">Після вибору папки з <code>DeadlyPremonition.exe</code> лаунчер автоматично завантажить і налаштує обрані компоненти. Вам залишиться лише запустити гру.</span>
+      </div>
+
       <footer class="firstrun-actions">
-        <button class="btn-primary"   id="btn-firstrun-install" disabled>
+        <button class="btn-primary firstrun-cta" id="btn-firstrun-install" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 4v12m0 0l-5-5m5 5l5-5M5 20h14"/>
@@ -1275,74 +2088,136 @@
           <span data-i18n="fr.install">Завантажити та встановити</span>
         </button>
       </footer>
+
+      <p class="firstrun-footnote">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="5" y="11" width="14" height="10" rx="2"/>
+          <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+        </svg>
+        <span data-i18n="fr.footnoteEditable">Можна буде змінити ці параметри пізніше в налаштуваннях.</span>
+      </p>
       </div><!-- /step-body=1 -->
 
       <!-- Step 2 — optional patches -->
       <div class="firstrun-step-body" data-step-body="2">
         <p class="firstrun-intro" data-i18n="fr.step2Intro">
-          Виберіть пресет: він налаштує рендеринг + сумісність одним кліком.
-          4GB Patch пропонується якщо у системі більше 4 ГБ оперативної пам'яті.
+          Тепер можна застосувати додаткові патчі. Це необов'язково, але рекомендовано для стабільної роботи гри.
         </p>
 
         <!-- Preset picker -->
-        <div class="firstrun-presets" id="firstrun-preset-picker">
-          <label class="firstrun-preset" data-preset="dpfix-dxvk">
-            <input type="radio" name="firstrun-preset" value="dpfix-dxvk" checked>
-            <div class="firstrun-preset-body">
-              <div class="firstrun-preset-name" data-i18n="fr.presetDpfixDxvk">DPfix + DXVK</div>
-              <div class="firstrun-preset-tag" data-i18n="fr.presetDpfixDxvkTag">Оптимально</div>
-              <div class="firstrun-preset-desc" data-i18n="fr.presetDpfixDxvkDesc">
+        <div class="firstrun-presets fr-presets-v2 fr-presets-v3" id="firstrun-preset-picker">
+
+          <label class="firstrun-preset fr-preset-card fr-preset-card-v3" data-preset="dpfix-dxvk">
+            <input type="radio" name="firstrun-preset" value="dpfix-dxvk">
+            <span class="fr-preset-radio fr-preset-radio-img">
+              <img class="fr-radio-off" src="../assets/icons/step2/radio-unchecked.svg" alt="" draggable="false">
+              <img class="fr-radio-on"  src="../assets/icons/step2/radio-selected-red.svg" alt="" draggable="false">
+            </span>
+            <span class="fr-preset-body">
+              <span class="fr-preset-row">
+                <span class="fr-preset-name" data-i18n="fr.presetDpfixDxvk">DPfix + DXVK</span>
+                <span class="fr-preset-tag fr-tag-optimal" data-i18n="fr.presetDpfixDxvkTag">Оптимально</span>
+              </span>
+              <span class="fr-preset-desc" data-i18n="fr.presetDpfixDxvkDesc">
                 Vulkan-рендерер + DPfix widescreen/FOV/HUD-фікси. Найстабільніше для більшості систем,
                 але перший запуск повільніший (DXVK компілює shader cache).
-              </div>
-            </div>
+              </span>
+            </span>
+            <img class="fr-preset-watermark" src="../assets/icons/step2/dp-watermark.svg" alt="" draggable="false">
           </label>
 
-          <label class="firstrun-preset" data-preset="dxvk-only">
+          <label class="firstrun-preset fr-preset-card fr-preset-card-v3" data-preset="dxvk-only">
             <input type="radio" name="firstrun-preset" value="dxvk-only">
-            <div class="firstrun-preset-body">
-              <div class="firstrun-preset-name" data-i18n="fr.presetDxvkOnly">DXVK тільки</div>
-              <div class="firstrun-preset-tag" data-i18n="fr.presetDxvkOnlyTag">Швидке завантаження</div>
-              <div class="firstrun-preset-desc" data-i18n="fr.presetDxvkOnlyDesc">
-                Vulkan-рендерер без DPfix wrapper. Швидше після першого запуску.
-                Без widescreen/FOV-фіксів, але всі DPfix exe-патчі (4GB, etc.) лишаються.
-              </div>
-            </div>
+            <span class="fr-preset-radio fr-preset-radio-img">
+              <img class="fr-radio-off" src="../assets/icons/step2/radio-unchecked.svg" alt="" draggable="false">
+              <img class="fr-radio-on"  src="../assets/icons/step2/radio-selected-red.svg" alt="" draggable="false">
+            </span>
+            <span class="fr-preset-body">
+              <span class="fr-preset-row">
+                <span class="fr-preset-name" data-i18n="fr.presetDxvkOnly">Тільки DXVK</span>
+                <span class="fr-preset-tag fr-tag-vulkan" data-i18n="fr.presetDxvkOnlyTag">Vulkan-рендерер</span>
+              </span>
+              <span class="fr-preset-desc" data-i18n="fr.presetDxvkOnlyDesc">
+                Vulkan-рендерер без DPfix wrapper. Перший запуск повільніший (DXVK компілює shader cache),
+                далі стабільно. Без widescreen/FOV-фіксів, але всі DPfix exe-патчі (4GB, etc.) лишаються.
+              </span>
+            </span>
+            <img class="fr-preset-watermark" src="../assets/icons/step2/v-watermark.svg" alt="" draggable="false">
           </label>
 
-          <label class="firstrun-preset" data-preset="dpfix-only">
-            <input type="radio" name="firstrun-preset" value="dpfix-only">
-            <div class="firstrun-preset-body">
-              <div class="firstrun-preset-name" data-i18n="fr.presetDpfixOnly">DPfix тільки</div>
-              <div class="firstrun-preset-tag" data-i18n="fr.presetDpfixOnlyTag">Native D3D9</div>
-              <div class="firstrun-preset-desc" data-i18n="fr.presetDpfixOnlyDesc">
-                DPfix із нативним d3d9 з System32. Мінімум залежностей.
+          <label class="firstrun-preset fr-preset-card fr-preset-card-v3" data-preset="dpfix-only">
+            <input type="radio" name="firstrun-preset" value="dpfix-only" checked>
+            <span class="fr-preset-radio fr-preset-radio-img">
+              <img class="fr-radio-off" src="../assets/icons/step2/radio-unchecked.svg" alt="" draggable="false">
+              <img class="fr-radio-on"  src="../assets/icons/step2/radio-selected-red.svg" alt="" draggable="false">
+            </span>
+            <span class="fr-preset-body">
+              <span class="fr-preset-row">
+                <span class="fr-preset-name" data-i18n="fr.presetDpfixOnly">Тільки DPfix</span>
+                <span class="fr-preset-tag fr-tag-fast" data-i18n="fr.presetDpfixOnlyTag">Швидке завантаження</span>
+              </span>
+              <span class="fr-preset-desc" data-i18n="fr.presetDpfixOnlyDesc">
+                DPfix із нативним d3d9 з System32. Без shader-компіляції — завжди швидке завантаження.
                 Підходить якщо DXVK дає проблеми або стара GPU без Vulkan.
-              </div>
-            </div>
+              </span>
+            </span>
+            <img class="fr-preset-watermark fr-preset-gauge" src="../assets/icons/step2/gauge-red.svg" alt="" draggable="false">
           </label>
+
+        </div>
+
+        <!-- Three benefits strip (between preset cards and 4GB Patch) -->
+        <div class="fr-step2-benefits">
+          <div class="fr-benefit">
+            <img class="fr-benefit-icon" src="../assets/icons/step2/shield-red.svg" alt="" draggable="false">
+            <div class="fr-benefit-text">
+              <div class="fr-benefit-title" data-i18n="fr.benefitStability">Більше стабільності</div>
+              <div class="fr-benefit-sub"   data-i18n="fr.benefitStabilitySub">Менше вильотів і зависань</div>
+            </div>
+          </div>
+          <div class="fr-benefit">
+            <img class="fr-benefit-icon" src="../assets/icons/step2/crosshair-red.svg" alt="" draggable="false">
+            <div class="fr-benefit-text">
+              <div class="fr-benefit-title" data-i18n="fr.benefitCompat">Краща сумісність</div>
+              <div class="fr-benefit-sub"   data-i18n="fr.benefitCompatSub">Оптимізація для сучасних систем</div>
+            </div>
+          </div>
+          <div class="fr-benefit">
+            <img class="fr-benefit-icon" src="../assets/icons/step2/rocket-red.svg" alt="" draggable="false">
+            <div class="fr-benefit-text">
+              <div class="fr-benefit-title" data-i18n="fr.benefitFast">Швидший старт</div>
+              <div class="fr-benefit-sub"   data-i18n="fr.benefitFastSub">Оптимізований запуск гри</div>
+            </div>
+          </div>
         </div>
 
         <!-- 4GB Patch — conditional (only shown when RAM > 4GB) -->
-        <div class="firstrun-extras" id="firstrun-extras">
-          <label class="firstrun-extra" id="extra-4gb">
+        <div class="firstrun-extras fr-extras-v2 fr-extras-v3" id="firstrun-extras">
+          <label class="firstrun-extra fr-extra-card fr-extra-card-v3" id="extra-4gb">
             <input type="checkbox" id="opt-4gb" checked>
-            <div class="firstrun-extra-body">
-              <div class="firstrun-extra-name" data-i18n="fr.extra4gb">4GB Patch</div>
-              <div class="firstrun-extra-desc" data-i18n="fr.extra4gbDesc">
-                Знімає 2 ГБ ліміт пам'яті для DP.exe. Рекомендовано якщо у системі &gt; 4 ГБ RAM.
-              </div>
-              <div class="firstrun-extra-status" id="opt-4gb-status">—</div>
-            </div>
+            <span class="fr-extra-check fr-extra-check-img">
+              <img class="fr-check-off" src="../assets/icons/step2/radio-unchecked.svg" alt="" draggable="false">
+              <img class="fr-check-on"  src="../assets/icons/step2/checkbox-red.svg" alt="" draggable="false">
+            </span>
+            <span class="fr-extra-body">
+              <span class="fr-extra-name" data-i18n="fr.extra4gb">4GB Patch</span>
+              <span class="fr-extra-desc" data-i18n="fr.extra4gbDesc">Знімає 2 ГБ ліміт пам'яті для DP.exe. Рекомендовано якщо у системі &gt; 4 ГБ RAM.</span>
+              <span class="fr-extra-status fr-ram-pill" id="opt-4gb-status">
+                <img class="fr-ram-icon" src="../assets/icons/step2/ram-chip-gray.svg" alt="" draggable="false">
+                <span class="fr-extra-status-text">—</span>
+              </span>
+            </span>
+            <img class="fr-preset-watermark fr-extra-watermark" src="../assets/icons/step2/4gb-watermark.svg" alt="" draggable="false">
           </label>
         </div>
 
         <!-- Preset application status -->
         <div class="firstrun-preset-status" id="firstrun-preset-status"></div>
 
-        <footer class="firstrun-actions firstrun-actions-step2">
-          <button class="btn-secondary" id="btn-firstrun-back"           data-i18n="fr.back">Назад</button>
-          <button class="btn-primary"   id="btn-firstrun-apply-preset"   data-i18n="fr.applyPreset">Застосувати пресет</button>
+        <footer class="firstrun-actions firstrun-actions-step2 fr-actions-step2-v2">
+          <button class="btn-secondary fr-back-btn" id="btn-firstrun-back" data-i18n="fr.back">Назад</button>
+          <button class="btn-primary firstrun-cta fr-apply-btn" id="btn-firstrun-apply-preset" data-i18n="fr.applyPreset">Застосувати пресет</button>
         </footer>
 
         <!-- Legacy hidden patch cards (kept for code compat — JS may still reference status fields) -->
@@ -1360,23 +2235,66 @@
 
       <!-- Step 3 — done -->
       <div class="firstrun-step-body" data-step-body="3">
-        <div class="firstrun-done">
-          <div class="firstrun-done-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M9 12l2 2 4-4"/>
-              <circle cx="12" cy="12" r="9"/>
-            </svg>
+        <div class="firstrun-done firstrun-done-v3">
+          <!-- Hero: big green check orb + two-line title + subtitle -->
+          <div class="fr-done-hero">
+            <img class="fr-done-orb" src="../assets/icons/step3/success-check-orb.svg" alt="" draggable="false">
+            <div class="fr-done-hero-text">
+              <h3 class="firstrun-done-title fr-done-title-v3">
+                <span class="fr-done-title-line1" data-i18n="fr.allComponentsInstalled">Усі компоненти встановлено</span>
+                <span class="fr-done-title-line2" data-i18n="fr.andConfigured">і налаштовано</span>
+              </h3>
+              <p class="fr-done-subtitle" data-i18n="fr.readyImmerse">
+                Ви готові зануритися у світ Deadly Premonition.
+              </p>
+            </div>
           </div>
-          <h3 class="firstrun-done-title" data-i18n="fr.allDone">Все готово!</h3>
-          <p class="firstrun-done-text" data-i18n-html="fr.allDoneText">
-            Ваш Deadly Premonition налаштований і готовий до запуску.<br>
-            Натисніть кнопку нижче, щоб перейти до лаунчера.
-          </p>
-          <button class="btn-primary firstrun-done-btn" id="btn-firstrun-finish"
-                  data-i18n="fr.finish">
-            Перейти до лаунчера
+
+          <!-- Component list -->
+          <ul class="firstrun-done-list firstrun-done-list-v3" id="firstrun-done-list">
+            <li data-comp="dpfix">
+              <img class="fr-done-row-check" src="../assets/icons/step3/check-small-green.svg" alt="" draggable="false">
+              <span class="firstrun-done-name">DPFix v0.9.5</span>
+              <span class="firstrun-done-dot">·</span>
+              <span class="firstrun-done-desc" data-i18n="fr.compDpfixDesc">Фікси та поліпшення гри</span>
+              <span class="firstrun-done-pill">
+                <img class="fr-done-pill-check" src="../assets/icons/step3/check-small-green.svg" alt="" draggable="false">
+                <span data-i18n="fr.installed">Встановлено</span>
+              </span>
+            </li>
+            <li data-comp="4gb">
+              <img class="fr-done-row-check" src="../assets/icons/step3/check-small-green.svg" alt="" draggable="false">
+              <span class="firstrun-done-name">4GB LAA Patch</span>
+              <span class="firstrun-done-dot">·</span>
+              <span class="firstrun-done-desc" data-i18n="fr.comp4gbDescDone">Розширення адресного простору</span>
+              <span class="firstrun-done-pill">
+                <img class="fr-done-pill-check" src="../assets/icons/step3/check-small-green.svg" alt="" draggable="false">
+                <span data-i18n="fr.installed">Встановлено</span>
+              </span>
+            </li>
+            <li data-comp="dxvk">
+              <img class="fr-done-row-check" src="../assets/icons/step3/check-small-green.svg" alt="" draggable="false">
+              <span class="firstrun-done-name">DXVK v2.7.1</span>
+              <span class="firstrun-done-dot">·</span>
+              <span class="firstrun-done-desc" data-i18n="fr.compDxvkDescDone">Vulkan-рендерер для кращої продуктивності</span>
+              <span class="firstrun-done-pill">
+                <img class="fr-done-pill-check" src="../assets/icons/step3/check-small-green.svg" alt="" draggable="false">
+                <span data-i18n="fr.installed">Встановлено</span>
+              </span>
+            </li>
+          </ul>
+
+          <button class="btn-primary firstrun-cta firstrun-done-btn fr-done-cta" id="btn-firstrun-finish">
+            <img class="fr-done-cta-icon" src="../assets/icons/step3/rocket-white.svg" alt="" draggable="false">
+            <span data-i18n="fr.finish">Перейти до лаунчера</span>
           </button>
+
+          <p class="fr-done-footnote">
+            <img class="fr-done-footnote-icon" src="../assets/icons/step3/shield-muted.svg" alt="" draggable="false">
+            <span data-i18n="fr.footnoteReconfig">
+              Ви можете змінити налаштування або перевстановити компоненти в будь-який час у лаунчері.
+            </span>
+          </p>
         </div>
       </div><!-- /step-body=3 -->
     </div>

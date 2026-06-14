@@ -42,8 +42,40 @@ const SETUP_COMPONENTS = [
 // ─────────────────────────────────────────────
 // Worker thread lifecycle
 // ─────────────────────────────────────────────
-let iniWorker  = null;
-let saveWorker = null;
+let iniWorker      = null;
+let saveWorker     = null;
+let heavyWorker    = null;
+let heavyTaskSeq   = 0;
+const heavyPending = new Map();   // id → { resolve, reject }
+
+function getHeavyWorker() {
+  if (heavyWorker) return heavyWorker;
+  heavyWorker = new Worker(path.join(__dirname, 'workers', 'heavy-tasks.js'));
+  heavyWorker.on('message', (msg) => {
+    const pending = heavyPending.get(msg.id);
+    if (!pending) return;
+    heavyPending.delete(msg.id);
+    if (msg.ok) pending.resolve(msg.result);
+    else        pending.reject(new Error(msg.error || 'worker error'));
+  });
+  heavyWorker.on('error', (err) => {
+    console.error('[heavy-tasks] worker error:', err);
+    // Fail all pending tasks; next call will respawn a fresh worker.
+    for (const { reject } of heavyPending.values()) reject(err);
+    heavyPending.clear();
+    heavyWorker = null;
+  });
+  heavyWorker.on('exit', () => { heavyWorker = null; });
+  return heavyWorker;
+}
+
+function runHeavyTask(op, args) {
+  return new Promise((resolve, reject) => {
+    const id = ++heavyTaskSeq;
+    heavyPending.set(id, { resolve, reject });
+    getHeavyWorker().postMessage({ id, op, args });
+  });
+}
 
 function getWorker() {
   if (iniWorker) return iniWorker;
@@ -85,6 +117,101 @@ function workerTask(payload) {
 }
 
 // ─────────────────────────────────────────────
+// Backup helpers — every patch we apply (Skip Intro, DXVK hex-redirect, ...)
+// keeps a copy of the original file in <gameDir>/exe_backup/ with a label
+// that says what the backup represents, not what was overwritten. Examples:
+//   DeadlyPremonition.exe_with_video  ← pre-Skip-Intro exe (intro still plays)
+//   d3d9.dll_dpfix_only               ← DPfix d3d9 before DXVK hex-redirect
+// Old <file>.bak files from earlier launcher versions are migrated on first
+// touch so users don't end up with two separate backup conventions.
+// ─────────────────────────────────────────────
+const BACKUP_DIRNAME = 'exe_backup';
+
+function getBackupDir(gameDir) {
+  return path.join(gameDir, BACKUP_DIRNAME);
+}
+async function ensureBackupDir(gameDir) {
+  const dir = getBackupDir(gameDir);
+  try { await fs.promises.mkdir(dir, { recursive: true }); } catch {}
+  return dir;
+}
+function backupPath(gameDir, label) {
+  return path.join(getBackupDir(gameDir), label);
+}
+/**
+ * Locate an existing backup for `originalPath`. Looks for the new
+ * exe_backup/<label> location first; if absent, falls back to the legacy
+ * <originalPath>.bak. If only the legacy file exists, it is moved into the
+ * new location so subsequent calls find it in one place.
+ *
+ * Returns the resolved absolute path of the backup file, or null if none.
+ */
+async function resolveBackup(originalPath, label) {
+  const gameDir = path.dirname(originalPath);
+  const newPath = backupPath(gameDir, label);
+  try { await fs.promises.access(newPath); return newPath; } catch {}
+  const legacy = originalPath + '.bak';
+  try {
+    await fs.promises.access(legacy);
+    await ensureBackupDir(gameDir);
+    try { await fs.promises.rename(legacy, newPath); }
+    catch { await fs.promises.copyFile(legacy, newPath); try { await fs.promises.unlink(legacy); } catch {} }
+    return newPath;
+  } catch {}
+  return null;
+}
+/**
+ * Create a backup of `originalPath` at exe_backup/<label> if one doesn't
+ * already exist (in either the new or legacy location). Idempotent.
+ */
+async function makeBackup(originalPath, label) {
+  const existing = await resolveBackup(originalPath, label);
+  if (existing) return existing;
+  const gameDir = path.dirname(originalPath);
+  await ensureBackupDir(gameDir);
+  const target = backupPath(gameDir, label);
+  await fs.promises.copyFile(originalPath, target);
+  return target;
+}
+
+const BACKUP_LABELS = {
+  // <gameDir>/DeadlyPremonition.exe before the Skip Intro byte patch
+  // (the byte at 0x243333 still reads B3 in this copy → intro videos play)
+  exeWithVideo:  'DeadlyPremonition.exe_with_video',
+  // <gameDir>/d3d9.dll as DPfix shipped it, before our DXVK hex-redirect
+  // replaced its 'd3d9.dll' import string with 'd9vk.dll'
+  d3d9DpfixOnly: 'd3d9.dll_dpfix_only',
+};
+
+/**
+ * NTCore's `4gb_patch.exe` drops a `<exe>.Backup` next to whatever .exe
+ * it patches (its own convention — capital B, no dot). To keep a single
+ * backup folder, move that file into exe_backup/<basename>_pre_4gb after
+ * every successful 4GB-patch run. Idempotent: if the target already
+ * exists we just delete the stray `.Backup`.
+ */
+async function migrateNTCore4gbBackup(exePath) {
+  if (!exePath) return null;
+  const src = exePath + '.Backup';
+  try { await fs.promises.access(src); } catch { return null; }   // nothing to migrate
+  const gameDir = path.dirname(exePath);
+  const dst     = backupPath(gameDir, `${path.basename(exePath)}_pre_4gb`);
+  await ensureBackupDir(gameDir);
+  try {
+    await fs.promises.access(dst);
+    // Already migrated — drop the stray NTCore copy.
+    try { await fs.promises.unlink(src); } catch {}
+    return dst;
+  } catch { /* no existing backup, proceed */ }
+  try { await fs.promises.rename(src, dst); }
+  catch {
+    await fs.promises.copyFile(src, dst);
+    try { await fs.promises.unlink(src); } catch {}
+  }
+  return dst;
+}
+
+// ─────────────────────────────────────────────
 // Settings persistence (userData JSON)
 // All async — never blocks the IPC event loop.
 // ─────────────────────────────────────────────
@@ -101,16 +228,26 @@ async function readSettings() {
   }
 }
 
+// Serialize writes via a single-slot tail promise. Two rapid `settings-write`
+// IPC calls used to race: both read, both write, second one wins and the first
+// patch was lost. Now every write waits for the previous to finish so the
+// patches stack predictably in call order.
+let settingsWriteTail = Promise.resolve();
 async function writeSettings(data) {
-  try {
-    await fs.promises.writeFile(
-      getSettingsPath(),
-      JSON.stringify(data, null, 2),
-      'utf-8'
-    );
-  } catch (err) {
-    console.error('[Settings] Write error:', err);
-  }
+  const run = async () => {
+    try {
+      await fs.promises.writeFile(
+        getSettingsPath(),
+        JSON.stringify(data, null, 2),
+        'utf-8'
+      );
+    } catch (err) {
+      console.error('[Settings] Write error:', err);
+    }
+  };
+  const next = settingsWriteTail.then(run, run);   // never let a previous failure block the chain
+  settingsWriteTail = next;
+  return next;
 }
 
 // ─────────────────────────────────────────────
@@ -128,8 +265,8 @@ const SPLASH_MIN_MS = 3000;
 
 function createSplashWindow() {
   splashWindow = new BrowserWindow({
-    width:           380,
-    height:          420,
+    width:           480,
+    height:          640,
     frame:           false,
     transparent:     true,
     resizable:       false,
@@ -233,9 +370,11 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (iniWorker)  { iniWorker.terminate();  iniWorker  = null; }
-  if (saveWorker) { saveWorker.terminate(); saveWorker = null; }
-  if (tray)       { tray.destroy();         tray       = null; }
+  if (iniWorker)        { iniWorker.terminate();        iniWorker        = null; }
+  if (saveWorker)       { saveWorker.terminate();       saveWorker       = null; }
+  if (heavyWorker)      { heavyWorker.terminate();      heavyWorker      = null; }
+  if (sessionPollTimer) { clearInterval(sessionPollTimer); sessionPollTimer = null; }
+  if (tray)             { tray.destroy();               tray             = null; }
   app.quit();
 });
 
@@ -562,6 +701,18 @@ ipcMain.handle('launch-steam', (_event, appId) => {
   const id = String(appId ?? '').trim();
   if (!/^\d{1,12}$/.test(id)) return { success: false, error: 'invalid app id' };
   shell.openExternal(`steam://run/${id}`);
+  return { success: true };
+});
+
+// steam://validate/<appid> tells Steam client to re-verify local file
+// integrity and re-download anything missing or corrupted. This is the
+// canonical "restore game to vanilla" path — Steam overwrites every file
+// the launcher (or DPfix/DXVK/4GB patch/etc.) modified. Note: it does NOT
+// touch our own exe_backup/ folder, so existing backups are preserved.
+ipcMain.handle('steam-validate', (_event, appId) => {
+  const id = String(appId ?? '').trim();
+  if (!/^\d{1,12}$/.test(id)) return { success: false, error: 'invalid app id' };
+  shell.openExternal(`steam://validate/${id}`);
   return { success: true };
 });
 
@@ -1094,9 +1245,10 @@ ipcMain.handle('apply-4gb-auto', async (_event, { gameDir, targetExe }) => {
     require('child_process').exec(
       cmd,
       { cwd: path.dirname(patchExe), windowsHide: false },
-      (err) => {
-        if (err) resolve({ success: false, error: err.message });
-        else     resolve({ success: true });
+      async (err) => {
+        if (err) { resolve({ success: false, error: err.message }); return; }
+        try { await migrateNTCore4gbBackup(targetExe); } catch {}
+        resolve({ success: true });
       }
     );
   });
@@ -1190,10 +1342,9 @@ ipcMain.handle('apply-skip-intro', async (_event, { exePath, enable }) => {
   if (!exePath) return { success: false, error: 'No exe path' };
   let fh;
   try {
-    // Make a .bak the first time we touch the file.
-    const bakPath = exePath + '.bak';
-    try { await fs.promises.access(bakPath); }
-    catch { await fs.promises.copyFile(exePath, bakPath); }
+    // First touch: keep a copy of the pre-patch exe (still plays intro)
+    // in <gameDir>/exe_backup/DeadlyPremonition.exe_with_video.
+    await makeBackup(exePath, BACKUP_LABELS.exeWithVideo);
 
     const current  = await readSkipIntroByte(exePath);
     const expected = enable ? SKIP_INTRO_ORIGINAL : SKIP_INTRO_PATCHED;
@@ -1413,6 +1564,7 @@ const SESSION_WARN_AFTER_MS = 3 * 60 * 60 * 1000;   // 3 hours
 const SESSION_POLL_MS       = 60 * 1000;              // 1 minute
 let   sessionDpStart        = null;
 let   sessionWarningSent    = false;
+let   sessionPollTimer      = null;
 
 function isDpRunning() {
   return new Promise((resolve) => {
@@ -1424,7 +1576,7 @@ function isDpRunning() {
   });
 }
 
-setInterval(async () => {
+sessionPollTimer = setInterval(async () => {
   const running = await isDpRunning();
   if (running) {
     if (!sessionDpStart) {
@@ -1518,11 +1670,15 @@ ipcMain.handle('dxvk-cache-info', async (_event, { gameDir } = {}) => {
   // GPU-driver-level shader caches (shared across all games). We report
   // these informationally so the user understands where shaders actually
   // live on modern systems — NVIDIA DXCache is the real heavy lifter.
-  const driver = {
-    nvidiaDxCache: await describeDirSize(path.join(app.getPath('home'), 'AppData', 'Local', 'NVIDIA', 'DXCache')),
-    nvidiaGlCache: await describeDirSize(path.join(app.getPath('home'), 'AppData', 'Local', 'NVIDIA', 'GLCache')),
-    amdShaderCache: await describeDirSize(path.join(app.getPath('home'), 'AppData', 'Local', 'AMD', 'DxCache')),
-  };
+  // Parallel-dispatch the three recursive directory scans into the heavy
+  // worker so a 10k+ file NVIDIA DXCache doesn't block the IPC event loop.
+  const homeDir = app.getPath('home');
+  const [nvidiaDxCache, nvidiaGlCache, amdShaderCache] = await Promise.all([
+    runHeavyTask('fs:describe-dir-size', { dir: path.join(homeDir, 'AppData', 'Local', 'NVIDIA', 'DXCache') }),
+    runHeavyTask('fs:describe-dir-size', { dir: path.join(homeDir, 'AppData', 'Local', 'NVIDIA', 'GLCache') }),
+    runHeavyTask('fs:describe-dir-size', { dir: path.join(homeDir, 'AppData', 'Local', 'AMD',    'DxCache') }),
+  ]);
+  const driver = { nvidiaDxCache, nvidiaGlCache, amdShaderCache };
 
   return {
     dxvk: {
@@ -1615,6 +1771,30 @@ ipcMain.handle('dxvk-cache-clean', async (_event, { gameDir } = {}) => {
     catch (err) { errors.push(`${f.name}: ${err.message}`); }
   }
   return { success: errors.length === 0, deleted, errors };
+});
+
+// Opens the Windows Sound control panel (mmsys.cpl). The "tab" parameter
+// chooses which tab to land on:
+//   'playback'  — for picking the stereo speaker config
+//   'recording' — for the Stereo Mix loopback workaround on 7.1 headphones
+// We launch via `control.exe` which is the documented entry point for
+// .cpl applets and respects the `,,N` tab-index parameter.
+ipcMain.handle('open-sound-settings', async (_event, { tab } = {}) => {
+  // `control` needs the tab parameter concatenated as a single token:
+  // `mmsys.cpl,,N` (no spaces) — passing as separate execFile args breaks it.
+  // We pass ONE argument; spaces matter zero here.
+  const tabIndex = tab === 'recording' ? '1' : '0';   // 0=Playback, 1=Recording
+  return new Promise((resolve) => {
+    require('child_process').execFile(
+      'control.exe',
+      [`mmsys.cpl,,${tabIndex}`],
+      { windowsHide: false },
+      (err) => {
+        if (err) resolve({ success: false, error: err.message });
+        else     resolve({ success: true });
+      }
+    );
+  });
 });
 
 ipcMain.handle('open-gpu-settings', async (_event, { vendor } = {}) => {
@@ -1939,13 +2119,9 @@ ipcMain.handle('apply-dxvk-auto', async (_event, { gameDir }) => {
   try { buf = await fs.promises.readFile(gameDll); }
   catch (err) { return { success: false, error: 'Не знайдено DPfix d3d9.dll у папці гри' }; }
 
-  // Backup original (idempotent — won't overwrite an existing .bak)
-  const bakPath = gameDll + '.bak';
-  try {
-    await fs.promises.access(bakPath);
-  } catch {
-    await fs.promises.writeFile(bakPath, buf);
-  }
+  // Backup the DPfix d3d9.dll (idempotent across launcher versions —
+  // resolveBackup migrates any old <file>.bak into exe_backup/ first).
+  await makeBackup(gameDll, BACKUP_LABELS.d3d9DpfixOnly);
 
   const search  = Buffer.from('d3d9.dll', 'ascii');
   const replace = Buffer.from('d9vk.dll', 'ascii');
@@ -1972,24 +2148,30 @@ ipcMain.handle('apply-dxvk-auto', async (_event, { gameDir }) => {
 // IPC – Revert DXVK (full undo of apply-dxvk-auto, plus deletes the DLLs).
 //
 // Reverses every step of the apply flow, in opposite order:
-//   1) Restore <gameDir>/d3d9.dll  (prefer the .bak we wrote during apply;
-//      fall back to a hex-replace 'd9vk.dll' → 'd3d9.dll' in place).
-//   2) Delete <gameDir>/d3d9.dll.bak  (cleanup once restore is confirmed).
+//   1) Restore <gameDir>/d3d9.dll from exe_backup/d3d9.dll_dpfix_only
+//      (resolveBackup migrates legacy .bak files into exe_backup/ first;
+//      falls back to in-place 'd9vk.dll' → 'd3d9.dll' hex-revert if no backup).
+//   2) Delete the backup file once restore is confirmed.
 //   3) Delete C:\Windows\SysWOW64\d9vk.dll  (admin required).
 // ─────────────────────────────────────────────
 ipcMain.handle('revert-dxvk-auto', async (_event, { gameDir }) => {
   if (!gameDir) return { success: false, error: 'No game folder' };
   const gameDll = path.join(gameDir, 'd3d9.dll');
-  const bakPath = gameDll + '.bak';
   const steps   = [];
 
-  // 1) Restore game's d3d9.dll
-  try {
-    await fs.promises.access(bakPath);
-    await fs.promises.copyFile(bakPath, gameDll);
-    steps.push('Restored game d3d9.dll from .bak');
-  } catch {
-    // No .bak — try in-place hex-reverse 'd9vk.dll' → 'd3d9.dll'
+  // 1) Restore game's d3d9.dll from exe_backup/d3d9.dll_dpfix_only
+  //    (resolveBackup also migrates any legacy d3d9.dll.bak into the
+  //    new exe_backup/ location before returning its path).
+  const bakResolved = await resolveBackup(gameDll, BACKUP_LABELS.d3d9DpfixOnly);
+  if (bakResolved) {
+    try {
+      await fs.promises.copyFile(bakResolved, gameDll);
+      steps.push(`Restored game d3d9.dll from ${path.relative(gameDir, bakResolved)}`);
+    } catch (err) {
+      return { success: false, error: `Cannot restore game d3d9.dll: ${err.message}`, steps };
+    }
+  } else {
+    // No backup — try in-place hex-reverse 'd9vk.dll' → 'd3d9.dll'
     try {
       const buf = await fs.promises.readFile(gameDll);
       const search  = Buffer.from('d9vk.dll', 'ascii');
@@ -2001,7 +2183,6 @@ ipcMain.handle('revert-dxvk-auto', async (_event, { gameDir }) => {
         count++;
       }
       if (count === 0) {
-        // Game d3d9.dll already references d3d9.dll — nothing to revert
         steps.push('Game d3d9.dll already unpatched');
       } else {
         await fs.promises.writeFile(gameDll, buf);
@@ -2012,11 +2193,13 @@ ipcMain.handle('revert-dxvk-auto', async (_event, { gameDir }) => {
     }
   }
 
-  // 2) Cleanup the .bak (best-effort)
-  try {
-    await fs.promises.unlink(bakPath);
-    steps.push('Removed d3d9.dll.bak');
-  } catch { /* missing is fine */ }
+  // 2) Cleanup the backup file (best-effort) once restore is confirmed.
+  if (bakResolved) {
+    try {
+      await fs.promises.unlink(bakResolved);
+      steps.push(`Removed ${path.relative(gameDir, bakResolved)}`);
+    } catch { /* missing is fine */ }
+  }
 
   // 3) Delete SysWOW64\d9vk.dll
   try {
@@ -2051,7 +2234,11 @@ ipcMain.handle('check-dxvk-applied', async (_event, { gameDir }) => {
     const buf = await fs.promises.readFile(gameDll);
     result.gamePatched = buf.indexOf(Buffer.from('d9vk.dll', 'ascii')) !== -1;
   } catch {}
-  try { await fs.promises.access(gameDll + '.bak'); result.bakExists = true; } catch {}
+  // Check both the new exe_backup location and the legacy <file>.bak.
+  try { await fs.promises.access(backupPath(gameDir, BACKUP_LABELS.d3d9DpfixOnly)); result.bakExists = true; } catch {}
+  if (!result.bakExists) {
+    try { await fs.promises.access(gameDll + '.bak'); result.bakExists = true; } catch {}
+  }
   result.applied = result.systemDll || result.gamePatched || result.bakExists;
   return result;
 });
@@ -2233,9 +2420,10 @@ ipcMain.handle('run-4gb-patch', async (_event, targetExe) => {
   const cmd = `"${patchExe}" "${targetExe}"`;
 
   return new Promise((resolve) => {
-    exec(cmd, { cwd: path.dirname(patchExe), windowsHide: false }, (err, stdout, stderr) => {
-      if (err) resolve({ success: false, error: err.message });
-      else     resolve({ success: true });
+    exec(cmd, { cwd: path.dirname(patchExe), windowsHide: false }, async (err, stdout, stderr) => {
+      if (err) { resolve({ success: false, error: err.message }); return; }
+      try { await migrateNTCore4gbBackup(targetExe); } catch {}
+      resolve({ success: true });
     });
   });
 });
@@ -3124,7 +3312,10 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {})
           if (err) {
             steps.push(`4GB Patch failed: ${stderr || err.message}`);
           } else {
-            steps.push('4GB Patch applied ✓');
+            const moved = await migrateNTCore4gbBackup(exePath).catch(() => null);
+            steps.push(moved
+              ? `4GB Patch applied ✓ (backup → exe_backup/${path.basename(moved)})`
+              : '4GB Patch applied ✓');
           }
         } else {
           steps.push('4GB Patch skipped (patcher not found in game or resources)');
@@ -3137,7 +3328,6 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {})
 
   // 2. Apply preset
   const d3d9Path  = path.join(gameDir, 'd3d9.dll');
-  const d3d9Bak   = path.join(gameDir, 'd3d9.dll.bak');
   const d9vkSys   = 'C:\\Windows\\SysWOW64\\d9vk.dll';
 
   switch (preset) {
@@ -3173,11 +3363,8 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {})
       // Patch in-place game d3d9.dll to forward into d9vk.dll
       try {
         if (await exists(d3d9Path)) {
-          // backup if not already there
-          if (!await exists(d3d9Bak)) {
-            await fs.promises.copyFile(d3d9Path, d3d9Bak);
-            steps.push('Backed up game/d3d9.dll → .bak');
-          }
+          // Backup the DPfix d3d9.dll (idempotent across launcher versions)
+          await makeBackup(d3d9Path, BACKUP_LABELS.d3d9DpfixOnly);
           // Hex-patch "d3d9.dll" → "d9vk.dll" (8 chars each, preserves length)
           const buf = await fs.promises.readFile(d3d9Path);
           const needle = Buffer.from('d3d9.dll', 'ascii');
@@ -3205,9 +3392,8 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {})
       const src = await findDxvkSourceDll(gameDir);
       if (!src) { steps.push('DXVK source missing'); break; }
       try {
-        if (await exists(d3d9Path) && !await exists(d3d9Bak)) {
-          await fs.promises.copyFile(d3d9Path, d3d9Bak);
-          steps.push('Backed up DPfix d3d9.dll → .bak');
+        if (await exists(d3d9Path)) {
+          await makeBackup(d3d9Path, BACKUP_LABELS.d3d9DpfixOnly);
         }
         await fs.promises.copyFile(src, d3d9Path);
         steps.push('Installed DXVK d3d9.dll directly (no DPfix wrapper)');
@@ -3222,12 +3408,13 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {})
       break;
     }
     case 'dpfix-only': {
-      // DPfix only — restore d3d9.dll from .bak (raw DPfix wrapper without DXVK chain).
-      // If .bak not present, leave d3d9.dll as-is but un-patch the 'd9vk.dll' string back.
+      // DPfix only — restore d3d9.dll from exe_backup (raw DPfix wrapper without DXVK chain).
+      // If the backup is missing, leave d3d9.dll as-is but un-patch the 'd9vk.dll' string back.
+      const d3d9BakResolved = await resolveBackup(d3d9Path, BACKUP_LABELS.d3d9DpfixOnly);
       try {
-        if (await exists(d3d9Bak)) {
-          await fs.promises.copyFile(d3d9Bak, d3d9Path);
-          steps.push('Restored DPfix d3d9.dll from .bak');
+        if (d3d9BakResolved) {
+          await fs.promises.copyFile(d3d9BakResolved, d3d9Path);
+          steps.push(`Restored DPfix d3d9.dll from ${path.relative(gameDir, d3d9BakResolved)}`);
         } else if (await exists(d3d9Path)) {
           // hex-undo d9vk.dll → d3d9.dll
           const buf = await fs.promises.readFile(d3d9Path);
@@ -3274,7 +3461,8 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {})
 //   Pattern-scan + 2-byte runtime fix to DP.exe for the known infinite-loop
 //   assert at VA 0x00409EA6. See workers/nan_guard.js + docs/NAN_HANG_GUARD.md.
 // ─────────────────────────────────────────────────────────────────────────────
-const nanGuard = require('./workers/nan_guard.js');
+// nan_guard is now loaded inside workers/heavy-tasks.js (worker thread).
+// Main process talks to it via runHeavyTask('nan-guard:*', { exePath }).
 
 function dpExePath(gameDir) {
   if (!gameDir) return null;
@@ -3284,7 +3472,7 @@ function dpExePath(gameDir) {
 ipcMain.handle('nan-guard-status', async (_event, { gameDir } = {}) => {
   const exePath = dpExePath(gameDir);
   if (!exePath) return { ok: false, status: 'no-game' };
-  return await nanGuard.analyze(exePath);
+  return await runHeavyTask('nan-guard:analyze', { exePath });
 });
 
 ipcMain.handle('nan-guard-apply', async (_event, { gameDir } = {}) => {
@@ -3300,7 +3488,7 @@ ipcMain.handle('nan-guard-apply', async (_event, { gameDir } = {}) => {
   if (running) {
     return { ok: false, status: 'game-running', error: 'DP.exe is currently running. Close the game first.' };
   }
-  return await nanGuard.apply(exePath);
+  return await runHeavyTask('nan-guard:apply', { exePath });
 });
 
 ipcMain.handle('nan-guard-revert', async (_event, { gameDir } = {}) => {
@@ -3315,7 +3503,7 @@ ipcMain.handle('nan-guard-revert', async (_event, { gameDir } = {}) => {
   if (running) {
     return { ok: false, status: 'game-running', error: 'DP.exe is currently running. Close the game first.' };
   }
-  return await nanGuard.revert(exePath);
+  return await runHeavyTask('nan-guard:revert', { exePath });
 });
 
 // GPU info (used by Stability tab to surface DXVK recommendation for legacy

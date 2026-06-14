@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" fill="none">
+  <defs><filter id="g" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  <g filter="url(#g)" stroke="#8F1C29" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
+    <path d="M14 52a26 26 0 1 1 52 0"/>
+    <path d="M40 28v4M24 44l3-2M56 44l-3-2"/>
+    <circle cx="40" cy="52" r="4"/>
+    <path d="M40 52 55 35"/>
+  </g>
+</svg>
