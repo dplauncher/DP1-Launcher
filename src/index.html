@@ -165,7 +165,7 @@
         <span class="hero-status-dot" id="status-dot"></span>
         <span class="hero-status-text" id="status-text" data-i18n="hero.gameReady">Game Ready</span>
         <span class="hero-status-sep">·</span>
-        <span class="hero-version" id="hero-version">v2.0.0</span>
+        <span class="hero-version" id="hero-version">v2.0.1</span>
       </div>
     </section>
 
@@ -1333,6 +1333,24 @@
               </a>
             </header>
 
+            <!-- Warn users about the DXVK + NVIDIA FPS-cap interaction
+                 before they pick a preset. Field-tested: DXVK + NVIDIA Max
+                 Frame Rate = 60 produces 10-minute load screens because DP
+                 ties asset-streaming to frame count. -->
+            <div class="presets-warning-banner" id="presets-dxvk-warning">
+              <img class="presets-warning-icon"
+                   src="../assets/icons/info-blue.svg" alt="" draggable="false">
+              <div class="presets-warning-text">
+                <strong data-i18n="presetsTab.dxvkWarnTitle">Чому DPfix-only — за замовчуванням?</strong>
+                <span data-i18n-html="presetsTab.dxvkWarnBody">
+                  На сучасних NVIDIA з FPS-cap у драйвері DXVK може давати
+                  лоадинги по 5-10 хв (DP прив'язує таймінг до кадрів).
+                  Якщо ти не маєш проблем із native d3d9 — лиши «Тільки DPfix».
+                  DXVK-пресети — для випадків, коли потрібен Vulkan-рендер.
+                </span>
+              </div>
+            </div>
+
             <div class="preset-cards" id="settings-preset-picker">
               <label class="preset-card" data-preset="dpfix-dxvk">
                 <input type="radio" name="settings-preset" value="dpfix-dxvk">
@@ -1340,11 +1358,13 @@
                 <span class="preset-card-body">
                   <span class="preset-card-row">
                     <span class="preset-card-name" data-i18n="fr.presetDpfixDxvk">DPfix + DXVK</span>
-                    <span class="preset-tag preset-tag-ok" data-i18n="fr.presetDpfixDxvkTag">Оптимально</span>
+                    <span class="preset-tag preset-tag-warn" data-i18n="fr.presetDpfixDxvkTag">Експериментально</span>
                   </span>
                   <span class="preset-card-desc" data-i18n="fr.presetDpfixDxvkDesc">
-                    Vulkan-рендерер + DPfix widescreen/FOV/HUD-фікси. Найстабільніше для більшості систем,
-                    але перший запуск повільніший (DXVK компілює shader cache).
+                    Vulkan-рендерер + DPfix widescreen/FOV/HUD-фікси.
+                    Потужний шлях, але на NVIDIA з активним FPS-cap у драйвері
+                    можуть бути довгі лоадинги (DP-таймінг прив'язаний до FPS).
+                    Підходить, якщо стандартний рендер тебе не влаштовує.
                   </span>
                 </span>
                 <span class="preset-card-stack">
@@ -1379,12 +1399,13 @@
                 <span class="preset-card-radio"></span>
                 <span class="preset-card-body">
                   <span class="preset-card-row">
-                    <span class="preset-card-name" data-i18n="fr.presetDpfixOnly">DPfix тільки</span>
-                    <span class="preset-tag preset-tag-red" data-i18n="fr.presetDpfixOnlyTag">Швидке завантаження</span>
+                    <span class="preset-card-name" data-i18n="fr.presetDpfixOnly">Тільки DPfix</span>
+                    <span class="preset-tag preset-tag-ok" data-i18n="fr.presetDpfixOnlyTag">Рекомендовано</span>
                   </span>
                   <span class="preset-card-desc" data-i18n="fr.presetDpfixOnlyDesc">
-                    DPfix із нативним d3d9 з System32. Без shader-компіляції — завжди швидке завантаження.
-                    Підходить якщо DXVK дає проблеми або стара GPU без Vulkan.
+                    DPfix із нативним d3d9 з System32. Без shader-компіляції — завжди
+                    швидке завантаження. Сумісність з усіма FPS-cap і vsync режимами.
+                    Найбезпечніший вибір для DP DC, працює стабільно на будь-якому залізі.
                   </span>
                 </span>
                 <span class="preset-card-stack">
@@ -1712,7 +1733,7 @@
                   <ul class="about-info-list">
                     <li>
                       <span class="about-info-key" data-i18n="about.infoVersion">Версія лаунчера</span>
-                      <span class="about-info-val" id="about-info-version">2.0.0</span>
+                      <span class="about-info-val" id="about-info-version">2.0.1</span>
                     </li>
                     <li>
                       <span class="about-info-key" data-i18n="about.infoPlatform">Платформа</span>
@@ -1772,7 +1793,7 @@
         </header>
         <div class="dash-body">
           <div class="update-version-row">
-            <span class="update-version-num" id="dash-update-num">v2.0.0</span>
+            <span class="update-version-num" id="dash-update-num">v2.0.1</span>
             <span class="update-version-tag" id="dash-update-tag" data-i18n="dash.upToDate">Up to date</span>
           </div>
           <p class="update-version-date" id="dash-update-date">—</p>
@@ -2117,7 +2138,7 @@
             <span class="fr-preset-body">
               <span class="fr-preset-row">
                 <span class="fr-preset-name" data-i18n="fr.presetDpfixDxvk">DPfix + DXVK</span>
-                <span class="fr-preset-tag fr-tag-optimal" data-i18n="fr.presetDpfixDxvkTag">Оптимально</span>
+                <span class="fr-preset-tag fr-tag-vulkan" data-i18n="fr.presetDpfixDxvkTag">Експериментально</span>
               </span>
               <span class="fr-preset-desc" data-i18n="fr.presetDpfixDxvkDesc">
                 Vulkan-рендерер + DPfix widescreen/FOV/HUD-фікси. Найстабільніше для більшості систем,
@@ -2155,7 +2176,7 @@
             <span class="fr-preset-body">
               <span class="fr-preset-row">
                 <span class="fr-preset-name" data-i18n="fr.presetDpfixOnly">Тільки DPfix</span>
-                <span class="fr-preset-tag fr-tag-fast" data-i18n="fr.presetDpfixOnlyTag">Швидке завантаження</span>
+                <span class="fr-preset-tag fr-tag-optimal" data-i18n="fr.presetDpfixOnlyTag">Рекомендовано</span>
               </span>
               <span class="fr-preset-desc" data-i18n="fr.presetDpfixOnlyDesc">
                 DPfix із нативним d3d9 з System32. Без shader-компіляції — завжди швидке завантаження.

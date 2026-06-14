@@ -1149,6 +1149,43 @@ body[data-view="settings"] .settings-foot {
 /* ────────────────────────────────────────────────────────────────────
    PRESET CARDS (Settings → Presets)
    ──────────────────────────────────────────────────────────────────── */
+/* DXVK-vs-NVIDIA-cap warning banner above the preset cards.
+   Compact info-styled card explaining why DPfix-only is default. */
+.presets-warning-banner {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(60,140,230,0.10), rgba(60,140,230,0.02)),
+    rgba(255,255,255,0.03);
+  border: 1px solid rgba(60,140,230,0.30);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.presets-warning-icon {
+  width: 28px; height: 28px;
+  object-fit: contain;
+  display: block;
+  flex: 0 0 28px;
+}
+.presets-warning-text {
+  display: flex; flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.presets-warning-text strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.005em;
+}
+
 .preset-cards {
   display: flex; flex-direction: column; gap: 10px;
   margin-bottom: 14px;

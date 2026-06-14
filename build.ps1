@@ -5,7 +5,7 @@ $output = & 'C:\Program Files\nodejs\node.exe' '.\node_modules\@electron\package
     --out=dist --overwrite `
     '--ignore=^/dist' '--ignore=^/dist2' '--ignore=^/.claude' `
     '--ignore=DPfix.ini' '--ignore=\.bak$' `
-    --app-version=2.0.0 --icon=tool.ico `
+    --app-version=2.0.1 --icon=tool.ico `
     '--extra-resource=assets/4gb_patch.exe' `
     '--extra-resource=assets/d9vk.dll' 2>&1
 $output | ForEach-Object { Write-Host "  $_" }

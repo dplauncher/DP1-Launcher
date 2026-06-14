@@ -1,5 +1,21 @@
 [
   {
+    "title_uk":   "🔥 v2.0.1 — DXVK + NVIDIA FPS-cap warning + DPfix-only стає рекомендованим",
+    "title_en":   "🔥 v2.0.1 — DXVK + NVIDIA FPS-cap warning + DPfix-only is now the recommended preset",
+    "excerpt_uk": "Польове тестування виявило: DXVK + активний FPS-cap у NVIDIA-драйвері = лоадинги по 5-10 хв у DP, бо гра прив'язує таймінг до кількості кадрів. У v2.0.1 ми переробили бейджі пресетів — `DPfix + DXVK` тепер позначений як «Експериментально» 🟠 (з прямим попередженням у описі), а `Тільки DPfix` стає «Рекомендовано» 🟢. На сторінці Settings → Пресети додано info-баннер «Чому DPfix-only — за замовчуванням?». Опис проблеми + варіанти обходу: RTSS conditional cap, NVIDIA Max Frame Rate тимчасово зняти, або просто лишити DPfix-only. Стратегія: native d3d9 + DPfix — найбезпечніший і найшвидший шлях для DP DC на сучасному залізі.",
+    "excerpt_en": "Field-testing confirmed: DXVK + an active NVIDIA driver-side FPS cap produces 5-10 minute load screens in DP, because the game ties asset-streaming timing to frame count. v2.0.1 reworks the preset badges — `DPfix + DXVK` is now labelled \"Experimental\" 🟠 (with the warning baked into its description), and `Only DPfix` becomes \"Recommended\" 🟢. The Settings → Presets page now shows a clear info-banner: \"Why is DPfix-only the default?\" — explaining the DXVK/NVIDIA interaction and the workarounds (RTSS conditional cap, temporarily disabling NVIDIA Max Frame Rate, or just sticking with DPfix-only). Bottom line: on modern hardware native d3d9 + DPfix is the safest and fastest path for DP DC.",
+    "date":       "June 15, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v2.0.1"
+  },
+  {
+    "title_uk":   "🎨 v2.0.0 — Major visual overhaul: майстер першого запуску, нова кнопка «ГРАТИ», stepper",
+    "title_en":   "🎨 v2.0.0 — Major visual overhaul: first-run wizard, new PLAY button, full-colour stepper",
+    "excerpt_uk": "Велике оновлення візуалу. Повний редизайн майстра першого запуску (3 кроки з кольоровим stepper-ом і preset-картками з watermark-іконками), новий фінальний крок «Готово» з зеленим check-orb і списком установлених/не-застосованих компонентів. Сторінки Settings (Загальні / Графіка / Доступність / Стабільність / Пресети / Про лаунчер) переведено на карткову сітку. Нова кнопка «ГРАТИ» — широка глянцева темно-червона з play-orb зліва. Інтерактивна мапа Greenvale, Skip Intro toggle, DXVK Full Revert, surround → stereo audio fallback. Під капотом: worker_threads для важких I/O, settings write-queue, тихе auto-update через VBS, tray-mode при запуску гри, 50+ нових SVG-іконок.",
+    "excerpt_en": "Major visual overhaul. Full redesign of the first-run wizard (3 steps with a colour-coded stepper and preset cards with watermark icons); a new \"Done\" final step with a green check-orb and a list of installed / downloaded-but-not-applied components. Settings sections (General / Graphics / Accessibility / Stability / Presets / About) moved to a card grid. New PLAY button — wide glossy deep-red with a colourful play orb. Interactive Greenvale map, Skip Intro toggle, DXVK Full Revert, surround → stereo audio fallback. Under the hood: worker_threads for heavy I/O, settings write-queue, silent auto-update via VBS, tray mode when launching the game, 50+ new SVG icons.",
+    "date":       "June 15, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v2.0.0"
+  },
+  {
     "title_uk":   "🌐 v1.5.4 — i18n fixes: button labels re-localize on language switch + missing strings",
     "title_en":   "🌐 v1.5.4 — i18n fixes: button labels re-localize on language switch + missing strings",
     "excerpt_uk": "Кнопки які пишуть текст через JS (наприклад «Відкрити панель NVIDIA», status-pill'и Stability/NaN Guard/GPU compatibility) тепер re-localize'аються при перемиканні мови — `applyLang()` тепер emit'ить custom event `dp1-language-changed`, на який слухає renderer і re-run'ить усі dynamic-text refresh handlers. До v1.5.4 ці кнопки лишались на тій мові, що була активна при першому завантаженні. Plus: i18n додано для `Display`, `Pause`, `Setup Required`, `Game Ready`, app title; виправлено напівукраїнський `fpsCap.openGpuVendor` («Відкрити панель {vendor}» замість «Відкрити {vendor} Control Panel»).",
