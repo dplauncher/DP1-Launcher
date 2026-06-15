@@ -2382,6 +2382,48 @@ body[data-view="settings"] .settings-foot {
 
 /* Aside cards */
 .stability-aside-card { padding: 16px 18px; }
+
+/* System diagnostics card (2.0.2) — compact rows with status pills */
+.sys-diag-list {
+  list-style: none;
+  margin: 12px 0 8px;
+  padding: 0;
+  display: flex; flex-direction: column;
+  gap: 6px;
+}
+.sys-diag-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  font-size: 12px;
+}
+.sys-diag-row-title { color: var(--text-2); font-weight: 500; }
+.sys-diag-row-pill {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid;
+}
+.sys-diag-row-pill[data-state="checking"] { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); color: var(--text-dim); }
+.sys-diag-row-pill[data-state="ok"]       { background: rgba(108,217,154,0.10); border-color: rgba(108,217,154,0.35); color: #6cd99a; }
+.sys-diag-row-pill[data-state="warn"]     { background: rgba(228,160,72,0.10);  border-color: rgba(228,160,72,0.35);  color: #f0c075; }
+.sys-diag-row-pill[data-state="bad"]      { background: rgba(196,25,43,0.12);   border-color: rgba(255,75,90,0.40);   color: #ff8a93; }
+.sys-diag-row-btn { padding: 4px 9px; font-size: 11px; height: auto; }
+.sys-diag-refresh-btn {
+  margin-top: 4px;
+  padding: 4px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.sys-diag-refresh-btn:hover { color: var(--text); }
+.compat-note-warn { color: #f0c075; }
 .stability-aside-cta {
   width: 100%;
   margin-top: 4px;

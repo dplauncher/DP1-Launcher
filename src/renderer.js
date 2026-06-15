@@ -79,6 +79,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadPersistedSettings();
   await loadAppVersion();
+  // Cache monitor metrics so DPfix.ini's presentWidth/Height can be locked
+  // to the actual screen rather than the user's render-resolution pick.
+  try {
+    window.screenMetrics = await window.electronAPI.screenMetrics?.();
+  } catch { window.screenMetrics = null; }
   await autoFindIni();
   await restoreAutosaveState();
   await restoreCursorHideState();
@@ -431,6 +436,15 @@ const gfxProfileState = {
   customPresets: {},     // { [name]: { 'aa-quality': '2', ... } }
 };
 
+// Sentinel for "user has tweaked the values but they don't match any saved
+// preset". updateGfxProfileLabel() shows it as "Custom".
+const GFX_ACTIVE_CUSTOM = '__custom__';
+
+// Suppress the field-change watcher while we're programmatically populating
+// the form from a preset (otherwise applyGfxSnapshot's dispatchEvent would
+// immediately flip the active back to Custom).
+let isApplyingGfxPreset = false;
+
 const GFX_FIELD_IDS = [
   'aa-quality', 'aa-type', 'filtering', 'shadow-scale', 'shadow-precision',
   'reflect-scale', 'improve-dof', 'dof-blur', 'ssao-strength', 'ssao-scale',
@@ -449,16 +463,70 @@ function readGfxSnapshot() {
 
 function applyGfxSnapshot(snap) {
   if (!snap) return;
+  isApplyingGfxPreset = true;
+  try {
+    GFX_FIELD_IDS.forEach((id) => {
+      if (!(id in snap)) return;
+      const el = $(id);
+      if (!el) return;
+      if (el.type === 'checkbox') {
+        el.checked = !!snap[id];
+      } else {
+        el.value = snap[id];
+      }
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  } finally {
+    isApplyingGfxPreset = false;
+  }
+}
+
+// Two snapshots are equivalent for profile-detection if every Graphics field
+// has the same effective value (normalized to string / bool).
+function gfxSnapshotsEqual(a, b) {
+  for (const id of GFX_FIELD_IDS) {
+    const av = typeof a[id] === 'boolean' ? a[id] : (a[id] != null ? String(a[id]) : '');
+    const bv = typeof b[id] === 'boolean' ? b[id] : (b[id] != null ? String(b[id]) : '');
+    if (av !== bv) return false;
+  }
+  return true;
+}
+
+// Detect which saved profile (built-in or custom) matches the current form
+// values exactly. Returns `__custom__` if no match.
+function detectGfxActiveFromValues() {
+  const snap = readGfxSnapshot();
+  for (const [key, p] of Object.entries(GFX_BUILTIN_PRESETS)) {
+    if (gfxSnapshotsEqual(snap, p.settings)) return key;
+  }
+  for (const [name, settings] of Object.entries(gfxProfileState.customPresets || {})) {
+    if (gfxSnapshotsEqual(snap, settings)) return name;
+  }
+  return GFX_ACTIVE_CUSTOM;
+}
+
+// Called whenever the user changes any Graphics field. If the new values
+// no longer match the active preset, flip the label to whichever preset
+// they DO match (might be another built-in) or "Custom" if none.
+function onGfxFieldUserChanged() {
+  if (isApplyingGfxPreset) return;
+  const newActive = detectGfxActiveFromValues();
+  if (gfxProfileState.active === newActive) return;
+  gfxProfileState.active = newActive;
+  updateGfxProfileLabel();
+  // Re-render the dropdown menu so the tick mark moves to the right row
+  // (or disappears entirely when the active state is __custom__).
+  try { renderGfxProfileMenu(); } catch {}
+  // Persist the active flip so the right pill shows on next launch.
+  persistSettings({ gfxProfile: newActive }).catch(() => {});
+}
+
+function setupGfxFieldWatchers() {
   GFX_FIELD_IDS.forEach((id) => {
-    if (!(id in snap)) return;
     const el = $(id);
     if (!el) return;
-    if (el.type === 'checkbox') {
-      el.checked = !!snap[id];
-    } else {
-      el.value = snap[id];
-    }
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.addEventListener('change', onGfxFieldUserChanged);
+    el.addEventListener('input',  onGfxFieldUserChanged);
   });
 }
 
@@ -513,6 +581,10 @@ function setupGfxProfilePicker() {
     renderGfxProfileMenu();
     showToast((t('gfx.presetSaved') || 'Пресет збережено: ') + name, 'success');
   });
+
+  // Watch every Graphics field — if user tweaks anything, flip the active
+  // pill to "Custom" (or to whichever preset their new values happen to match).
+  setupGfxFieldWatchers();
 
   loadGfxProfileState();
 }
@@ -886,6 +958,10 @@ function syncUIFromValues(v) {
   $('res-width').value  = pw;
   $('res-height').value = ph;
 
+  // Display Mode mapping in 2.0.2:
+  //   • Fullscreen → DPfix(forceWindowed=0, borderless=0)
+  //   • Borderless → DPfix(forceWindowed=0, borderless=1)   ← wizard default
+  //   • Windowed   → DPfix(forceWindowed=1, borderless=0)
   const fw = g('forceWindowed'), bl = g('borderlessFullscreen');
   if      (fw === '1') setRadio('disp-mode', 'windowed');
   else if (bl === '1') setRadio('disp-mode', 'borderless');
@@ -934,9 +1010,18 @@ function collectUIValues() {
   if (!w || !h) throw new Error(t('toast.invalidRes'));
 
   const mode = getRadio('disp-mode');
+
+  // Resolution dropdown controls ONLY DPfix's internal render resolution
+  // (supersampling target). We deliberately do NOT touch presentWidth /
+  // presentHeight — those are the actual display mode the game requests
+  // from D3D9 and must match the user's monitor. The launcher leaves them
+  // at whatever DPfix.ini already has (user can edit manually if needed).
+  //
+  // Why: writing presentW=3840 on a 1080p monitor makes DP request
+  // exclusive fullscreen 3840x2160@N → driver can't set that mode → crash.
+
   return {
     renderWidth: String(w),  renderHeight: String(h),
-    presentWidth: String(w), presentHeight: String(h),
     forceWindowed:        mode === 'windowed'   ? '1' : '0',
     borderlessFullscreen: mode === 'borderless' ? '1' : '0',
     fullscreenHz:         String(parseInt($('fullscreen-hz').value, 10) || 60),
@@ -973,11 +1058,17 @@ async function applyAndSave() {
       lines:    state.iniLines,
       values:   { ...state.iniValues, ...values },
     });
+    // Persist Display Mode separately — DPfix.ini doesn't have a slot for
+    // "launcher-managed borderless" (it shares INI flags with plain
+    // Windowed), so launch-game reads the actual intent from settings.
+    const mode = getRadio('disp-mode');
+    await persistSettings({ dispMode: mode });
+
     const fresh = await window.electronAPI.loadIni(state.iniPath);
     state.iniLines = fresh.lines;
     state.iniValues = fresh.values;
     showToast(t('toast.settingsSaved'), 'success');
-    logActivity('completed', 'DPfix.ini settings saved');
+    logActivity('completed', `DPfix.ini settings saved (mode: ${mode})`);
   } catch (err) {
     showToast(t('toast.saveError') + err.message, 'error');
   }
@@ -3241,10 +3332,16 @@ async function onFirstRunApplyPreset() {
   if (!gameDir) return;
   const selected = document.querySelector('input[name="firstrun-preset"]:checked')?.value || 'dpfix-only';
   const with4gb  = $('opt-4gb')?.checked || false;
+  // Skip Intro disabled in 2.0.2 — the byte at offset 0x243333 isn't the
+  // intro-control flag in the current Steam build (SHA DDDB03DF…), patching
+  // it hangs the game on launch. The wizard checkbox is hidden, the IPC
+  // handler is preserved for manual testing on older builds.
+  const withSkipIntro = false;
 
   // Remember choice so the step-3 done list can show only what was installed
-  firstRunState.lastPreset  = selected;
-  firstRunState.lastWith4gb = with4gb;
+  firstRunState.lastPreset      = selected;
+  firstRunState.lastWith4gb     = with4gb;
+  firstRunState.lastSkipIntro   = withSkipIntro;
 
   if (selected === 'original-files') {
     await triggerOriginalFilesValidation($('firstrun-preset-status'));
@@ -3260,13 +3357,13 @@ async function onFirstRunApplyPreset() {
   }
 
   try {
-    const r = await window.electronAPI.applyPreset?.(gameDir, selected, with4gb);
+    const r = await window.electronAPI.applyPreset?.(gameDir, selected, with4gb, { skipIntro: withSkipIntro });
     if (r?.success) {
       if (statusEl) {
         statusEl.textContent = (r.steps || []).join('\n');
         statusEl.className = 'firstrun-preset-status active ok';
       }
-      logActivity('completed', `Preset applied: ${selected}${with4gb ? ' + 4GB' : ''}`);
+      logActivity('completed', `Preset applied: ${selected}${with4gb ? ' + 4GB' : ''}${withSkipIntro ? ' + SkipIntro' : ''}`);
       showToast((t('fr.presetApplied') || 'Preset applied') + `: ${selected}`, 'success');
       // Auto-advance to step 3 after a brief delay so user sees the result
       setTimeout(() => setFirstRunStep(3), 1200);
@@ -3557,12 +3654,18 @@ async function loadAppVersion() {
     const v = await window.electronAPI.getAppVersion?.();
     if (!v) return;
     const tag = 'v' + v;
-    const heroV  = $('hero-version');
-    const dashV  = $('dash-update-num');
-    const aboutV = document.querySelector('.about-version');
-    if (heroV)  heroV.textContent  = tag;
-    if (dashV)  dashV.textContent  = tag;
-    if (aboutV) aboutV.textContent = tag;
+    // All version surfaces in the UI. Update them from app.getVersion()
+    // (reads package.json) so we don't have to chase hardcoded HTML on
+    // every bump. The Info-table row shows the raw number, the rest show
+    // the `v`-prefixed tag.
+    const set = (id, value) => { const el = $(id); if (el) el.textContent = value; };
+    set('hero-version',       tag);   // home-screen footer pill
+    set('about-version',      tag);   // About → hero version pill
+    set('dash-update-num',    tag);   // dashboard update card
+    set('about-info-version', v);     // About → Info → Launcher version row (raw)
+    // Legacy class-based selector kept for any future cards that might
+    // still use it.
+    document.querySelectorAll('.about-version').forEach(el => { el.textContent = tag; });
   } catch {}
 }
 
@@ -4315,6 +4418,86 @@ function setupStabilityHandlers() {
   $('btn-nanguard-revert')?.addEventListener('click', onNanGuardRevert);
   $('btn-gpu-rescan')?.addEventListener('click', refreshGpuInfo);
   $('btn-gpu-goto-presets')?.addEventListener('click', () => activateSettingsSection('presets'));
+
+  // 2.0.2 system diagnostics
+  $('btn-sys-diag-refresh')?.addEventListener('click', refreshSysDiagnostics);
+  $('sys-diag-physx-btn')?.addEventListener('click', onSysDiagInstallPhysX);
+  $('sys-diag-lav-btn')?.addEventListener('click', () => window.electronAPI.openAppsFeatures?.());
+  // Initial probe when Stability section is rendered
+  refreshSysDiagnostics();
+}
+
+// ── System diagnostics (Stability tab, 2.0.2) ───────────────────────────
+let sysDiagPhysxInstaller = null;
+
+function sysDiagSet(id, state, text) {
+  const pill = $('sys-diag-' + id + '-pill');
+  if (!pill) return;
+  pill.dataset.state = state;
+  pill.textContent = text;
+}
+
+async function refreshSysDiagnostics() {
+  // PhysX
+  try {
+    const gameDir = getGameDir();
+    const r = await window.electronAPI.physxStatus?.(gameDir);
+    if (r?.healthy) {
+      sysDiagSet('physx', 'ok', t('sysDiag.installed') || 'Installed');
+      $('sys-diag-physx-btn')?.setAttribute('hidden', '');
+    } else {
+      sysDiagSet('physx', 'bad', t('sysDiag.missing') || 'Missing');
+      sysDiagPhysxInstaller = r?.installerPath || null;
+      const btn = $('sys-diag-physx-btn');
+      if (btn) {
+        if (sysDiagPhysxInstaller) btn.removeAttribute('hidden');
+        else                       btn.setAttribute('hidden', '');
+      }
+    }
+  } catch { sysDiagSet('physx', 'warn', '?'); }
+
+  // Steam Overlay (informational pill, no action)
+  try {
+    const r = await window.electronAPI.steamOverlayStatus?.();
+    if (r?.overlayEnabled) sysDiagSet('overlay', 'warn', t('sysDiag.enabled')  || 'Enabled');
+    else                   sysDiagSet('overlay', 'ok',   t('sysDiag.disabled') || 'Disabled');
+  } catch { sysDiagSet('overlay', 'warn', '?'); }
+
+  // LAV Filters
+  try {
+    const r = await window.electronAPI.lavFiltersStatus?.();
+    if (r?.installed) {
+      sysDiagSet('lav', 'warn', t('sysDiag.installed') || 'Installed');
+      $('sys-diag-lav-btn')?.removeAttribute('hidden');
+    } else {
+      sysDiagSet('lav', 'ok', t('sysDiag.ok') || 'OK');
+      $('sys-diag-lav-btn')?.setAttribute('hidden', '');
+    }
+  } catch { sysDiagSet('lav', 'warn', '?'); }
+
+  // Monitors (informational + Ep.7 warning if >1)
+  try {
+    const m = window.screenMetrics || await window.electronAPI.screenMetrics?.();
+    const count = m?.displays?.length ?? 1;
+    if (count > 1) {
+      sysDiagSet('monitors', 'warn', count + '');
+      $('sys-diag-monitors-note')?.removeAttribute('hidden');
+    } else {
+      sysDiagSet('monitors', 'ok', count + '');
+      $('sys-diag-monitors-note')?.setAttribute('hidden', '');
+    }
+  } catch { sysDiagSet('monitors', 'warn', '?'); }
+}
+
+async function onSysDiagInstallPhysX() {
+  if (!sysDiagPhysxInstaller) return;
+  const r = await window.electronAPI.physxInstall?.(sysDiagPhysxInstaller);
+  if (r?.success) {
+    showToast('PhysX installer launched — accept UAC and finish setup', 'info');
+    setTimeout(refreshSysDiagnostics, 5000);
+  } else {
+    showToast('PhysX install failed: ' + (r?.error || 'unknown'), 'error');
+  }
 }
 
 // Auto-register if document ready

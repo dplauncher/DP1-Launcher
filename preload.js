@@ -44,6 +44,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopCodecFix:     ()                  => ipcRenderer.invoke('stop-codec-fix'),
   startCursorHide:  (processName)       => ipcRenderer.invoke('start-cursor-hide', { processName }),
   stopCursorHide:   ()                  => ipcRenderer.invoke('stop-cursor-hide'),
+
+  // Launcher-managed borderless windowed — workaround for DPfix's broken
+  // borderlessFullscreen=1 mode. assets/dpc_borderless.ps1 polls for the
+  // game window and strips its frame via Win32 API.
+  startBorderlessHelper: (processName)  => ipcRenderer.invoke('start-borderless-helper', { processName }),
+  stopBorderlessHelper:  ()             => ipcRenderer.invoke('stop-borderless-helper'),
+
+  // Monitor info — renderer uses primaryWidth/Height to set DPfix's
+  // presentWidth/Height. Independent of the user's "resolution" pick (which
+  // controls supersampling render target).
+  screenMetrics:         ()             => ipcRenderer.invoke('screen-metrics'),
+
+  // System diagnostics (Stability tab)
+  steamOverlayStatus: ()           => ipcRenderer.invoke('steam-overlay-status'),
+  physxStatus:        (gameDir)    => ipcRenderer.invoke('physx-status', { gameDir }),
+  physxInstall:       (installerPath) => ipcRenderer.invoke('physx-install', { installerPath }),
+  lavFiltersStatus:   ()           => ipcRenderer.invoke('lav-filters-status'),
+  openAppsFeatures:   ()           => ipcRenderer.invoke('open-apps-features'),
   checkCaptureCursor:(gameDir)          => ipcRenderer.invoke('check-capture-cursor', { gameDir }),
   applyCaptureCursor:(gameDir, enable)  => ipcRenderer.invoke('apply-capture-cursor', { gameDir, enable }),
   onSessionWarning:  (cb)               => ipcRenderer.on('session-warning', (_e, data) => cb(data)),
@@ -123,8 +141,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // First-run preset picker (v1.4)
   systemInfo:                ()                 => ipcRenderer.invoke('system-info'),
-  applyPreset:               (gameDir, preset, with4gb) =>
-                              ipcRenderer.invoke('apply-preset', { gameDir, preset, with4gb }),
+  applyPreset:               (gameDir, preset, with4gb, opts = {}) =>
+                              ipcRenderer.invoke('apply-preset', { gameDir, preset, with4gb, skipIntro: !!opts.skipIntro }),
 
   // ── v1.5.0 Experimental NaN Hang Guard + GPU compatibility ─────
   nanGuardStatus:            (gameDir)          => ipcRenderer.invoke('nan-guard-status', { gameDir }),

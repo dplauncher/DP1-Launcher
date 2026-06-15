@@ -165,7 +165,7 @@
         <span class="hero-status-dot" id="status-dot"></span>
         <span class="hero-status-text" id="status-text" data-i18n="hero.gameReady">Game Ready</span>
         <span class="hero-status-sep">·</span>
-        <span class="hero-version" id="hero-version">v2.0.1</span>
+        <span class="hero-version" id="hero-version">v2.0.2</span>
       </div>
     </section>
 
@@ -663,17 +663,16 @@
 
                 <div class="settings-card-body gfx-form">
                   <div class="gfx-field">
-                    <label class="gfx-field-label" for="res-preset">Resolution
-                      <span class="gfx-field-hint" data-i18n="gfx.resolutionHint">Виберіть базову роздільну здатність.</span>
+                    <label class="gfx-field-label" for="res-preset" data-i18n="gfx.renderResLabel">Роздільна здатність рендерингу
+                      <span class="gfx-field-hint" data-i18n="gfx.renderResHint">Внутрішня роздільна, у якій гра МАЛЮЄ кадр (DPfix renderWidth/Height). Не плутати з розміром вікна. Вище за монітор = supersampling: різкіша картинка, але GPU під більшим навантаженням. Розмір вікна / fullscreen-режиму не змінюється.</span>
                     </label>
                     <select id="res-preset" class="form-select gfx-select">
                       <option value="1280×720">1280 × 720</option>
                       <option value="1366×768">1366 × 768</option>
                       <option value="1600×900">1600 × 900</option>
-                      <option value="1920×1080" selected>1920 × 1080 (16:9)</option>
-                      <option value="2560×1440">2560 × 1440</option>
-                      <option value="3840×2160">3840 × 2160</option>
-                      <option value="custom">Custom…</option>
+                      <option value="1920×1080" selected>1920 × 1080 (native)</option>
+                      <option value="2560×1440">2560 × 1440 (1.5× SSAA)</option>
+                      <option value="3840×2160">3840 × 2160 (2× SSAA)</option>
                     </select>
                   </div>
 
@@ -692,6 +691,9 @@
                           Fullscreen
                         </span>
                       </label>
+                      <!-- DPfix-native Borderless restored in 2.0.2 — works
+                           on this Steam build now that Skip Intro byte patch
+                           was removed (it was poisoning DPfix's render init). -->
                       <label class="gfx-seg">
                         <input type="radio" name="disp-mode" value="borderless" checked>
                         <span class="gfx-seg-body">
@@ -716,16 +718,13 @@
                     </div>
                   </div>
 
-                  <div class="gfx-field" id="custom-res-row">
-                    <label class="gfx-field-label">Width / Height
-                      <span class="gfx-field-hint" data-i18n="gfx.whHint">Роздільна здатність у пікселях.</span>
-                    </label>
-                    <div class="gfx-wh-row">
-                      <input type="number" id="res-width"  class="form-num gfx-num" value="1920" disabled>
-                      <span class="gfx-wh-sep">×</span>
-                      <input type="number" id="res-height" class="form-num gfx-num" value="1080" disabled>
-                    </div>
-                  </div>
+                  <!-- Custom Width/Height removed in 2.0.2 — the Resolution
+                       dropdown writes only DPfix's internal renderWidth/Height
+                       (supersampling target), not the display mode, so a free
+                       Custom input was confusing. Hidden inputs preserved so
+                       collectUIValues / detectGfxActiveFromValues don't break. -->
+                  <input type="hidden" id="res-width"  value="1920">
+                  <input type="hidden" id="res-height" value="1080">
 
                   <div class="gfx-field">
                     <label class="gfx-field-label" for="fullscreen-hz">Refresh Rate
@@ -857,18 +856,13 @@
                 <span class="settings-card-mini-title" data-i18n="dpcFixes.title">Фікси для DPC</span>
               </div>
 
-            <details class="fix-item">
-              <summary>
-                <span class="fix-item-title" data-i18n="skipIntro.label">Пропустити заставки</span>
-                <label class="form-toggle" onclick="event.stopPropagation()">
-                  <input type="checkbox" id="skip-intro-toggle">
-                  <span class="form-toggle-track"><span class="form-toggle-thumb"></span></span>
-                  <span class="form-toggle-label" id="skip-intro-label" data-i18n="saves.off">Off</span>
-                </label>
-              </summary>
-              <p class="settings-help fix-item-help" data-i18n="skipIntro.help">Патчить байт 0x243333 у .exe щоб пропустити логотипи.</p>
-              <p class="compat-note" id="skip-intro-note"></p>
-            </details>
+            <!-- Skip Intro removed in 2.0.2 — byte at 0x243333 is NOT the
+                 intro-control flag in the current Steam build (SHA DDDB03DF…)
+                 and patching it hangs the game. The skip-intro-toggle input
+                 element is preserved hidden so JS handlers don't crash. -->
+            <input type="checkbox" id="skip-intro-toggle" hidden>
+            <span id="skip-intro-label" hidden></span>
+            <span id="skip-intro-note" hidden></span>
 
             <details class="fix-item">
               <summary>
@@ -1222,6 +1216,44 @@
                   <p class="compat-note" id="diag-export-note"></p>
                 </div>
 
+                <!-- System diagnostics (2.0.2). Four detectors with status
+                     pills + action buttons. Probes run on Stability tab open
+                     and on demand via Refresh. -->
+                <div class="settings-card stability-aside-card">
+                  <div class="settings-card-head-mini">
+                    <span class="settings-card-mini-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                      </svg>
+                    </span>
+                    <span class="settings-card-mini-title" data-i18n="sysDiag.title">Системна діагностика</span>
+                  </div>
+                  <p class="settings-card-mini-sub" data-i18n="sysDiag.sub">Швидкі перевірки що часто впливають на запуск і стабільність DP.</p>
+                  <ul class="sys-diag-list">
+                    <li class="sys-diag-row" id="sys-diag-physx">
+                      <span class="sys-diag-row-title" data-i18n="sysDiag.physx">PhysX runtime</span>
+                      <span class="sys-diag-row-pill" data-state="checking" id="sys-diag-physx-pill">—</span>
+                      <button class="btn-secondary btn-compact sys-diag-row-btn" id="sys-diag-physx-btn" data-i18n="sysDiag.install" hidden>Встановити</button>
+                    </li>
+                    <li class="sys-diag-row" id="sys-diag-overlay">
+                      <span class="sys-diag-row-title" data-i18n="sysDiag.overlay">Steam Overlay</span>
+                      <span class="sys-diag-row-pill" data-state="checking" id="sys-diag-overlay-pill">—</span>
+                    </li>
+                    <li class="sys-diag-row" id="sys-diag-lav">
+                      <span class="sys-diag-row-title" data-i18n="sysDiag.lav">LAV Filters</span>
+                      <span class="sys-diag-row-pill" data-state="checking" id="sys-diag-lav-pill">—</span>
+                      <button class="btn-secondary btn-compact sys-diag-row-btn" id="sys-diag-lav-btn" data-i18n="sysDiag.uninstall" hidden>Видалити</button>
+                    </li>
+                    <li class="sys-diag-row" id="sys-diag-monitors">
+                      <span class="sys-diag-row-title" data-i18n="sysDiag.monitors">Монітори</span>
+                      <span class="sys-diag-row-pill" data-state="checking" id="sys-diag-monitors-pill">—</span>
+                    </li>
+                  </ul>
+                  <p class="compat-note compat-note-warn" id="sys-diag-monitors-note" hidden data-i18n="sysDiag.ep7Warn">На главі 7 рекомендовано від'єднати додаткові монітори.</p>
+                  <button class="btn-link sys-diag-refresh-btn" id="btn-sys-diag-refresh" type="button" data-i18n="sysDiag.refresh">Оновити перевірки</button>
+                </div>
+
                 <div class="settings-card stability-aside-card">
                   <div class="settings-card-head-mini">
                     <span class="settings-card-mini-icon settings-card-mini-icon-warn">
@@ -1549,7 +1581,7 @@
                     </div>
                     <div class="about-hero-text">
                       <h2 class="about-hero-title" data-i18n="about.appTitle">Deadly Premonition — фанатський лаунчер</h2>
-                      <span class="about-hero-version" id="about-version">v2.0.0</span>
+                      <span class="about-hero-version" id="about-version">v2.0.2</span>
                       <p class="about-hero-intro" data-i18n-html="about.intro">
                         Це <strong>фанатський лаунчер</strong>, створений з однією метою: зробити гру
                         <em>Deadly Premonition: The Director's Cut</em> максимально комфортною.
@@ -1733,7 +1765,7 @@
                   <ul class="about-info-list">
                     <li>
                       <span class="about-info-key" data-i18n="about.infoVersion">Версія лаунчера</span>
-                      <span class="about-info-val" id="about-info-version">2.0.1</span>
+                      <span class="about-info-val" id="about-info-version">2.0.2</span>
                     </li>
                     <li>
                       <span class="about-info-key" data-i18n="about.infoPlatform">Платформа</span>
@@ -1793,7 +1825,7 @@
         </header>
         <div class="dash-body">
           <div class="update-version-row">
-            <span class="update-version-num" id="dash-update-num">v2.0.1</span>
+            <span class="update-version-num" id="dash-update-num">v2.0.2</span>
             <span class="update-version-tag" id="dash-update-tag" data-i18n="dash.upToDate">Up to date</span>
           </div>
           <p class="update-version-date" id="dash-update-date">—</p>
@@ -2231,6 +2263,15 @@
             </span>
             <img class="fr-preset-watermark fr-extra-watermark" src="../assets/icons/step2/4gb-watermark.svg" alt="" draggable="false">
           </label>
+
+          <!-- Skip Intro Videos was removed in 2.0.2.
+               Field-tested on Steam build SHA DDDB03DF…: the byte at offset
+               0x243333 is NOT the intro-control flag in this build (despite
+               older guides pointing at it). Patching it to 0x00 corrupts
+               the game's startup path and makes it hang. The IPC handler
+               in main.js (apply-skip-intro) is retained for power users
+               who want to drive it manually on older Steam builds. -->
+          <input type="checkbox" id="opt-skip-intro" hidden>
         </div>
 
         <!-- Preset application status -->
@@ -2309,6 +2350,13 @@
             <img class="fr-done-cta-icon" src="../assets/icons/step3/rocket-white.svg" alt="" draggable="false">
             <span data-i18n="fr.finish">Перейти до лаунчера</span>
           </button>
+
+          <p class="fr-done-footnote fr-done-reboot-tip">
+            <img class="fr-done-footnote-icon" src="../assets/icons/step3/shield-muted.svg" alt="" draggable="false">
+            <span data-i18n="fr.rebootTip">
+              Радимо перезавантажити ПК перед першим запуском гри — це покращує стабільність після встановлення компонентів.
+            </span>
+          </p>
 
           <p class="fr-done-footnote">
             <img class="fr-done-footnote-icon" src="../assets/icons/step3/shield-muted.svg" alt="" draggable="false">

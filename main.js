@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage, screen } = require('electron');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
@@ -361,13 +361,34 @@ if (process.platform === 'win32') {
   try { app.setAppUserModelId('ua.littlebit.dp1-launcher'); } catch {}
 }
 
-app.whenReady().then(() => {
-  createSplashWindow();
-  createWindow();
-  setupSplashFlow();
-  // Pre-warm the worker thread so first INI load is instant
-  getWorker();
-});
+// Single-instance lock. The launcher exits to the tray when starting the
+// game (so the save-backup worker keeps snapshotting dp.sav). Without
+// this lock, double-clicking the .exe a second time spawns a parallel
+// process — another tray icon, another mainWindow, another worker pool,
+// settings-write races, duplicated `apply-preset` IPC. The user reported
+// 5+ tray icons after multiple relaunches. Now the second process just
+// surfaces the first window and exits.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // Bring the running launcher to the front when a second .exe fires.
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible())  mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
+  app.whenReady().then(() => {
+    createSplashWindow();
+    createWindow();
+    setupSplashFlow();
+    // Pre-warm the worker thread so first INI load is instant
+    getWorker();
+  });
+}
 
 app.on('window-all-closed', () => {
   if (iniWorker)        { iniWorker.terminate();        iniWorker        = null; }
@@ -506,9 +527,93 @@ ipcMain.handle('browse-exe', async () => {
 // Previously used spawn() which threw an uncaught EACCES exception because
 // the child 'error' event fired after the handler had already returned.
 // ─────────────────────────────────────────────
+// Background handle for the borderless-helper PS process so we can stop it
+// on app quit if the game is still running. Reset on game exit too.
+let borderlessHelperProc = null;
+
+function spawnBorderlessHelper(processName = 'DP') {
+  // Launcher-managed borderless windowed: works around DPfix's broken
+  // borderlessFullscreen=1 mode (infinite toggle loop in WindowManager).
+  // We spawn a PowerShell helper that watches for the DP main window and
+  // strips its frame + resizes to the monitor rect via Win32 API.
+  if (borderlessHelperProc && !borderlessHelperProc.killed) return; // already running
+
+  const scriptPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'dpc_borderless.ps1')
+    : path.join(__dirname, 'assets', 'dpc_borderless.ps1');
+  const { spawn } = require('child_process');
+  try {
+    borderlessHelperProc = spawn('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden',
+      '-ExecutionPolicy', 'Bypass',
+      '-File', scriptPath,
+      '-ProcessName', processName,
+    ], { detached: true, windowsHide: true, stdio: 'ignore' });
+    borderlessHelperProc.unref();
+    borderlessHelperProc.on('exit', () => { borderlessHelperProc = null; });
+  } catch (e) {
+    borderlessHelperProc = null;
+    console.warn('[borderless] spawn failed:', e.message);
+  }
+}
+
 ipcMain.handle('launch-game', async (_event, exePath) => {
+  // Pre-flight: ensure <gameDir>/savedata exists. DP crashes hard at first
+  // save attempt if the folder is missing (Steam-side restore sometimes
+  // skips empty dirs). Silent mkdir — cheap, no harm if already there.
+  try {
+    const gameDir = path.dirname(exePath);
+    await fs.promises.mkdir(path.join(gameDir, 'savedata'), { recursive: true });
+  } catch { /* not fatal */ }
+
   const errMsg = await shell.openPath(exePath);
   if (errMsg) return { success: false, error: errMsg };
+
+  // If the user picked launcher-managed borderless in Graphics, kick off the
+  // Win32 helper. It polls for the DP window, applies the borderless
+  // transformation, then watches for drift.
+  try {
+    const settings = await readSettings();
+    if (settings && settings.dispMode === 'borderless-launcher') {
+      // Match either DP.exe or DeadlyPremonition.exe — helper auto-detects.
+      const procName = path.basename(exePath).replace(/\.exe$/i, '');
+      spawnBorderlessHelper(procName);
+    }
+  } catch { /* not fatal */ }
+
+  return { success: true };
+});
+
+// Expose monitor metrics so the renderer can write presentWidth/Height to
+// match the user's screen instead of the (supersampling) resolution dropdown.
+ipcMain.handle('screen-metrics', async () => {
+  try {
+    const primary = screen.getPrimaryDisplay();
+    return {
+      primaryWidth:  primary.size.width,
+      primaryHeight: primary.size.height,
+      scaleFactor:   primary.scaleFactor,
+      displays:      screen.getAllDisplays().map(d => ({
+        width:  d.size.width,
+        height: d.size.height,
+      })),
+    };
+  } catch (e) {
+    return { primaryWidth: 1920, primaryHeight: 1080, error: e.message };
+  }
+});
+
+// Manual trigger for the borderless helper (used by Settings test buttons).
+ipcMain.handle('start-borderless-helper', async (_event, { processName } = {}) => {
+  spawnBorderlessHelper(processName || 'DP');
+  return { success: true };
+});
+
+ipcMain.handle('stop-borderless-helper', async () => {
+  if (borderlessHelperProc && !borderlessHelperProc.killed) {
+    try { borderlessHelperProc.kill(); } catch {}
+    borderlessHelperProc = null;
+  }
   return { success: true };
 });
 
@@ -3272,6 +3377,8 @@ ipcMain.handle('xidi-check-installed', async (_event, { gameDir } = {}) => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 ipcMain.handle('system-info', async () => {
+  let monitorCount = 1;
+  try { monitorCount = screen.getAllDisplays().length; } catch {}
   return {
     totalMemoryGB: Math.round(os.totalmem() / 1024 / 1024 / 1024 * 10) / 10,
     totalMemoryBytes: os.totalmem(),
@@ -3280,15 +3387,231 @@ ipcMain.handle('system-info', async () => {
     platform: process.platform,
     arch: process.arch,
     osRelease: os.release(),
+    monitorCount,
   };
 });
 
-ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {}) => {
+// Probe whether Steam Overlay is currently enabled for THIS specific game.
+// Steam stores the per-game switch under:
+//   HKCU\Software\Valve\Steam\Apps\<AppID>\OverlayDisabled  (DWORD, 1 = disabled)
+// If the key is missing → overlay falls back to the global setting and is
+// considered enabled.
+ipcMain.handle('steam-overlay-status', async () => {
+  const STEAM_APPID = '247660';
+  return new Promise((resolve) => {
+    require('child_process').exec(
+      `reg query "HKCU\\Software\\Valve\\Steam\\Apps\\${STEAM_APPID}" /v OverlayDisabled`,
+      (err, stdout) => {
+        if (err) {
+          resolve({ overlayEnabled: true, source: 'global-fallback' });
+          return;
+        }
+        const m = /OverlayDisabled\s+REG_DWORD\s+0x(\d+)/i.exec(stdout || '');
+        const disabled = m && parseInt(m[1], 16) === 1;
+        resolve({ overlayEnabled: !disabled, source: 'per-game' });
+      }
+    );
+  });
+});
+
+// PhysX runtime check. DP DC shipped with PhysX 2.8.x — the loaders end up
+// in SysWOW64 after the bundled redist runs. Many "DP won't launch" reports
+// trace back to missing/half-installed PhysX runtime.
+ipcMain.handle('physx-status', async (_event, { gameDir } = {}) => {
+  const sysWow = path.join(process.env.SystemRoot || 'C:\\Windows', 'SysWOW64');
+  const candidates = [
+    'PhysXLoader.dll',
+    'PhysXCore.dll',
+    'PhysXDevice.dll',
+    'PhysXLocalDll.dll',
+  ];
+  const found = [];
+  const missing = [];
+  for (const dll of candidates) {
+    const p = path.join(sysWow, dll);
+    if (await exists(p)) found.push(dll); else missing.push(dll);
+  }
+  // Locate redist installer in game folder so the UI can offer reinstall.
+  let installerPath = null;
+  if (gameDir) {
+    const candidates = [
+      path.join(gameDir, 'redist', 'PhysX_SystemSoftware.msi'),
+      path.join(gameDir, '_CommonRedist', 'PhysX', '9.10.0224', 'PhysX_9.10.0224_SystemSoftware.msi'),
+      path.join(gameDir, 'redist', 'PhysX-9.10.0224-SystemSoftware.msi'),
+    ];
+    for (const p of candidates) { if (await exists(p)) { installerPath = p; break; } }
+  }
+  return {
+    foundCount:    found.length,
+    found,
+    missing,
+    healthy:       missing.length === 0,
+    installerPath,
+  };
+});
+
+// One-shot: launch the bundled PhysX installer. Uses shell.openPath so UAC
+// elevation prompts come through naturally (the .msi handler is msiexec
+// which usually elevates for system-software installs).
+ipcMain.handle('physx-install', async (_event, { installerPath } = {}) => {
+  if (!installerPath) return { success: false, error: 'no installer path' };
+  if (!(await exists(installerPath))) return { success: false, error: 'installer not found' };
+  const err = await shell.openPath(installerPath);
+  if (err) return { success: false, error: err };
+  return { success: true };
+});
+
+// LAV Filters detection. LAV is a popular codec pack that hooks DirectShow;
+// when present it can replace DP's own video decode path and crash the
+// game during cutscenes (multiple Steam community reports).
+ipcMain.handle('lav-filters-status', async () => {
+  return new Promise((resolve) => {
+    // LAV writes its uninstall key under a versioned subkey, so we just
+    // check whether anything LAV-named is registered under Uninstall.
+    require('child_process').exec(
+      `reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "LAV Filters" /d`,
+      (err, stdout) => {
+        const installed = !err && /LAV Filters/i.test(stdout || '');
+        resolve({ installed });
+      }
+    );
+  });
+});
+
+// Open Windows "Apps & Features" so the user can uninstall LAV Filters
+// manually. We can't safely auto-uninstall a system codec pack — easy way
+// to brick someone's media playback.
+ipcMain.handle('open-apps-features', async () => {
+  await shell.openExternal('ms-settings:appsfeatures');
+  return { success: true };
+});
+
+// Set DPfix.ini window flags to the wizard default: borderless fullscreen.
+// Field-confirmed on Steam build SHA DDDB03DF (no Skip Intro patch):
+//   (forceWindowed 0, borderlessFullscreen 1, FULLSCREEN 0) → works ✓
+//
+// (1,1) was still broken earlier this session because Skip Intro byte-patch
+// at 0x243333 corrupts the game's startup — once Skip Intro was removed,
+// DPfix's native borderless works as expected. We use this combination as
+// the wizard default; the user can override later via Graphics tab.
+async function applyDpfixWindowDefaults(gameDir) {
+  const iniPath = path.join(gameDir, 'DPfix.ini');
+  if (!(await exists(iniPath))) {
+    return 'DPfix.ini not found — skipped window-flag defaults';
+  }
+  try {
+    let content = await fs.promises.readFile(iniPath, 'utf8');
+    const before = content;
+    content = content.replace(
+      /^([\t ]*forceWindowed[\t ]+)\d+/im,
+      (_, prefix) => `${prefix}0`,
+    );
+    content = content.replace(
+      /^([\t ]*borderlessFullscreen[\t ]+)\d+/im,
+      (_, prefix) => `${prefix}1`,
+    );
+    if (content === before) {
+      return 'DPfix.ini: window flags already at borderless-fullscreen defaults';
+    }
+    await fs.promises.writeFile(iniPath, content, 'utf8');
+    return 'DPfix.ini: set forceWindowed=0, borderlessFullscreen=1 (wizard default)';
+  } catch (e) {
+    return `DPfix.ini default-apply failed: ${e.message}`;
+  }
+}
+
+// Sync config.cnf's FULLSCREEN flag with DPfix.ini's window mode so the
+// game and DPfix can't end up disagreeing (the classic init deadlock).
+//
+// Field-tested on Steam build SHA D7FC3C72:
+//   (forceWindowed 0, borderless 0, FULLSCREEN 1) → real fullscreen ✓
+//   (forceWindowed 0, borderless 0, FULLSCREEN 0) → windowed ✓
+//   (forceWindowed 1, borderless 1, FULLSCREEN 1) → init hang ✗
+//   (forceWindowed 0, borderless 1, FULLSCREEN 0) → black screen ✗
+//
+// Rule we follow: if DPfix has both flags at 0 (the stock state), leave
+// config.cnf FULLSCREEN as-is — the user's choice in the game / launcher
+// applies. If DPfix forces a windowed-style mode, we set FULLSCREEN=0 so
+// the game doesn't fight it.
+async function syncConfigCnfWithDpfix(gameDir) {
+  const cfgPath = path.join(gameDir, 'config.cnf');
+  const iniPath = path.join(gameDir, 'DPfix.ini');
+  if (!(await exists(cfgPath))) {
+    return 'config.cnf not found (game will create it on first run)';
+  }
+  // Probe DPfix.ini to see what window mode it wants.
+  let dpfixForceWindowed = 0;
+  let dpfixBorderless    = 0;
+  if (await exists(iniPath)) {
+    try {
+      const ini = await fs.promises.readFile(iniPath, 'utf8');
+      const fw  = /^[\t ]*forceWindowed[\t ]+(\d+)/im.exec(ini);
+      const bl  = /^[\t ]*borderlessFullscreen[\t ]+(\d+)/im.exec(ini);
+      dpfixForceWindowed = fw ? parseInt(fw[1], 10) : 0;
+      dpfixBorderless    = bl ? parseInt(bl[1], 10) : 0;
+    } catch { /* leave defaults */ }
+  }
+  // Stock DPfix (0, 0) → don't touch FULLSCREEN; user's game-side choice wins.
+  if (dpfixForceWindowed === 0 && dpfixBorderless === 0) {
+    return 'config.cnf: FULLSCREEN left unchanged (DPfix in stock fullscreen-pass-through mode)';
+  }
+  // Anything else (DPfix forcing a windowed style) → FULLSCREEN must be 0.
+  try {
+    const content = await fs.promises.readFile(cfgPath, 'utf8');
+    const re = /^([\t ]*FULLSCREEN[\t ]*=[\t ]*)\d+([\t ]*)$/im;
+    if (!re.test(content)) {
+      return 'config.cnf: FULLSCREEN key not present yet — skipped';
+    }
+    const replaced = content.replace(re, (_, pre, post) => `${pre}0${post}`);
+    if (replaced === content) return 'config.cnf: FULLSCREEN already 0 (matches DPfix windowed mode)';
+    await fs.promises.writeFile(cfgPath, replaced, 'utf8');
+    return 'config.cnf: FULLSCREEN → 0 (synced to DPfix forced-windowed)';
+  } catch (e) {
+    return `config.cnf edit failed: ${e.message}`;
+  }
+}
+
+ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb, skipIntro } = {}) => {
   if (!gameDir) return { success: false, error: 'gameDir not provided' };
   if (!preset)  return { success: false, error: 'preset not provided' };
 
   const steps = [];
   const exePath = path.join(gameDir, 'DP.exe');
+
+  // 0. Apply Skip Intro byte patch FIRST (before 4GB Patch).
+  //
+  // ORDER MATTERS. NTCore's 4gb_patch.exe finalises the PE checksum after
+  // it flips the LARGE_ADDRESS_AWARE bit. If we patch the Skip Intro byte
+  // (B3 → 00 @ 0x243333) AFTER NTCore runs, the checksum field still
+  // describes the pre-Skip-Intro content — mismatch crashes the game on
+  // some Steam builds (confirmed in v2.0.1 user-report investigation).
+  // Doing Skip Intro first lets NTCore include the byte change in the
+  // checksum it computes for us.
+  if (skipIntro) {
+    try {
+      const SKIP_INTRO_OFFSET   = 0x243333;
+      const SKIP_INTRO_ORIGINAL = 0xB3;
+      const SKIP_INTRO_PATCHED  = 0x00;
+      const fh = await fs.promises.open(exePath, 'r+');
+      const buf = Buffer.alloc(1);
+      await fh.read(buf, 0, 1, SKIP_INTRO_OFFSET);
+      if (buf[0] === SKIP_INTRO_PATCHED) {
+        await fh.close();
+        steps.push('Skip Intro already applied');
+      } else if (buf[0] !== SKIP_INTRO_ORIGINAL) {
+        await fh.close();
+        steps.push(`Skip Intro skipped: unexpected byte 0x${buf[0].toString(16).padStart(2,'0').toUpperCase()} at 0x${SKIP_INTRO_OFFSET.toString(16)} — unknown DP.exe build`);
+      } else {
+        // Backup BEFORE writing so revert later is possible
+        await makeBackup(exePath, BACKUP_LABELS.exeWithVideo);
+        await fh.write(Buffer.from([SKIP_INTRO_PATCHED]), 0, 1, SKIP_INTRO_OFFSET);
+        await fh.close();
+        steps.push('Skip Intro applied ✓ (B3 → 00 @ 0x243333, backup → exe_backup/DeadlyPremonition.exe_with_video)');
+      }
+    } catch (e) {
+      steps.push(`Skip Intro error: ${e.message}`);
+    }
+  }
 
   // 1. Apply 4GB patch if requested
   if (with4gb) {
@@ -3450,6 +3773,17 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb } = {})
     default:
       return { success: false, error: `Unknown preset: ${preset}` };
   }
+
+  // Force config.cnf FULLSCREEN = 0 so DPfix's borderlessFullscreen=1 wins
+  // — game thinks it's windowed, DPfix renders a borderless fullscreen on
+  // top. Confirmed working combination on this Steam build.
+  steps.push(await syncConfigCnfWithDpfix(gameDir));
+
+  // Wizard default: DPfix borderless fullscreen (forceWindowed=0,
+  // borderlessFullscreen=1). Confirmed working on this Steam build after
+  // Skip Intro byte-patch was removed from the wizard. User can change
+  // via Graphics tab later.
+  steps.push(await applyDpfixWindowDefaults(gameDir));
 
   return { success: true, preset, steps };
 });
