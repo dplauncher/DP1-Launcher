@@ -27,9 +27,11 @@ The launcher downloads, installs and configures everything for you.
 - 🔧 **Auto-setup** — DPFix v0.9.5, 4GB LAA Patch, DXVK 2.7.1 are installed on first run
 - 🔍 **Steam library autodetect** (registry + `libraryfolders.vdf` parsing)
 - 🎨 **Liquid-glass UI** — dark cinematic interface, red accents, Greenvale vibe
-- ⚙️ **DPfix.ini editor** — AA, shadows, SSAO, DoF, resolution, display mode, refresh rate
+- ⚙️ **DPfix.ini editor** — AA, shadows, SSAO, DoF, **render resolution (supersampling)**, display mode, refresh rate
+- 🩺 **System Diagnostics** (2.0.2) — PhysX runtime, Steam Overlay, LAV Filters, monitor count
 - 💾 **Save backups every 2 minutes** + one-click restore with confirm dialog & character detection
 - 🪟 **Windows compatibility** — XP SP3 or Windows 98 / Me via registry
+- 🔒 **Single-instance lock** — second launch surfaces the running window
 - 📰 **GitHub news feed** — fetched from `news.json` in this repo
 - 🔔 **Update notifications** via GitHub Releases API
 - 🇺🇦🇬🇧 **Two languages** — Ukrainian and English
@@ -54,7 +56,12 @@ game's known issues:
   launcher restarts.
 - 🖱 **DPfix CaptureCursor** — alternative cursor fix at the D3D9
   wrapper level via DPfix.ini toggle.
-- ⏭ **Skip Intro Videos** — one-byte hex patch on DP.exe (0x243333).
+- ⏭ **Skip Intro Videos** — _removed from UI in 2.0.2._ The one-byte
+  hex patch at `0x243333` was tested across community guides going back
+  to 2016, but does **not** work on the current Steam build (SHA
+  `DDDB03DF…`) — the byte there is no longer the intro-control flag,
+  patching it corrupts game init. IPC handler kept in `main.js` for
+  power users on older Steam builds.
 - 🧠 **DXVK Shader Cache** panel — info on game-local cache + NVIDIA
   DXCache / AMD DxCache + per-game cleanup.
 
@@ -99,9 +106,11 @@ Windows-built-in `tar.exe` for `.tar.gz` extraction, PowerShell for registry ops
 - 🔧 **Автоматична настройка** — DPFix v0.9.5, 4GB LAA Patch, DXVK 2.7.1 ставляться під час першого запуску
 - 🔍 **Авто-пошук гри у Steam-бібліотеках** (registry + парсинг `libraryfolders.vdf`)
 - 🎨 **Liquid-glass UI** — темний кінематографічний інтерфейс із червоними акцентами, атмосфера Greenvale
-- ⚙️ **Редагування DPfix.ini** — AA, тіні, SSAO, DoF, роздільна здатність, режим екрана, частота
+- ⚙️ **Редагування DPfix.ini** — AA, тіні, SSAO, DoF, **роздільна здатність рендерингу (supersampling)**, режим екрана, частота
+- 🩺 **Системна діагностика** (2.0.2) — PhysX runtime, Steam Overlay, LAV Filters, кількість моніторів
 - 💾 **Автоматичні бекапи збережень** кожні 2 хвилини + швидке відновлення з визначенням персонажа
 - 🪟 **Режим сумісності Windows** — XP SP3 або Windows 98 / Me через реєстр
+- 🔒 **Single-instance lock** — повторний запуск виносить існуюче вікно
 - 📰 **GitHub-стрічка новин** — лаунчер тягне `news.json` із цього репо
 - 🔔 **Перевірка оновлень** через GitHub Releases API
 - 🇺🇦🇬🇧 **Дві мови** — українська та англійська
@@ -125,7 +134,11 @@ Windows-built-in `tar.exe` for `.tar.gz` extraction, PowerShell for registry ops
   лаунчера.
 - 🖱 **DPfix CaptureCursor** — альтернативний фікс курсору на рівні
   D3D9-wrapper'а через тоггл у DPfix.ini.
-- ⏭ **Skip Intro Videos** — одно-байтовий хекс-патч у DP.exe (0x243333).
+- ⏭ **Skip Intro Videos** — _прибрано з UI у 2.0.2._ Одно-байтовий
+  патч за адресою `0x243333` фігурував у всіх community-гайдах з 2016,
+  але на поточному Steam-build (SHA `DDDB03DF…`) цей байт **більше не
+  контролює intro** — патчити його ламає game init. IPC handler у
+  `main.js` лишається для power users на старіших Steam-build.
 - 🧠 **Панель DXVK Shader Cache** — інформація про кеш гри + NVIDIA
   DXCache / AMD DxCache + очищення для DP.
 
