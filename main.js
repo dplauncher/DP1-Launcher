@@ -14,7 +14,7 @@ const UPDATE_REPO = 'dplauncher/DP1-Launcher';
 //   archive: 'zip'    → PowerShell Expand-Archive
 //            'targz'  → Windows built-in tar -xzf
 //   target:  'gameDir'    → extracted into <gameDir>
-//            'dxvkCache'  → extracted into <gameDir>/_dxvk-cache/  (kept out of game files)
+//            'dxvkCache'  → extracted into %TEMP%/dp1-launcher-cache/dxvk/  (off the game folder, see getDxvkCacheDir)
 const SETUP_COMPONENTS = [
   {
     id:       'dpfix',
@@ -381,12 +381,21 @@ if (!gotSingleInstanceLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     createSplashWindow();
     createWindow();
     setupSplashFlow();
     // Pre-warm the worker thread so first INI load is instant
     getWorker();
+    // 2.0.5: nuke any legacy <gameDir>/_dxvk-cache left by older builds.
+    // New location is %TEMP%/dp1-launcher-cache/dxvk.
+    try {
+      const s = await readSettings();
+      if (s?.gamePath) {
+        const gameDir = path.dirname(s.gamePath);
+        await migrateLegacyDxvkCache(gameDir);
+      }
+    } catch { /* not fatal */ }
   });
 }
 
@@ -1259,6 +1268,30 @@ async function extractArchive(archivePath, destDir, kind) {
 }
 
 /**
+ * DXVK distribution cache location. Lives in %TEMP% — NOT in the game
+ * folder — so users who choose DPfix-only don't get a stray `_dxvk-cache`
+ * directory polluting their Steam install. Persisted across launcher
+ * runs so re-running setup doesn't re-download.
+ */
+function getDxvkCacheDir() {
+  return path.join(os.tmpdir(), 'dp1-launcher-cache', 'dxvk');
+}
+
+// One-shot cleanup: if a legacy `<gameDir>/_dxvk-cache` exists (from
+// pre-2.0.5 installs), remove it. The new location is %TEMP%.
+async function migrateLegacyDxvkCache(gameDir) {
+  if (!gameDir) return;
+  const legacy = path.join(gameDir, '_dxvk-cache');
+  try { await fs.promises.access(legacy); } catch { return; /* nothing to do */ }
+  try {
+    await fs.promises.rm(legacy, { recursive: true, force: true });
+    console.log(`[migrate] removed legacy ${legacy}`);
+  } catch (e) {
+    console.warn(`[migrate] failed to remove legacy DXVK cache: ${e.message}`);
+  }
+}
+
+/**
  * Heuristic detection of an already-installed component, so we don't
  * re-download what's already on disk. Checks for the most distinctive
  * file each component leaves behind.
@@ -1273,7 +1306,7 @@ async function isComponentInstalled(comp, gameDir) {
     case '4gb':
       return exists(path.join(gameDir, '4gb_patch.exe'));
     case 'dxvk': {
-      const cacheDir = path.join(gameDir, '_dxvk-cache');
+      const cacheDir = getDxvkCacheDir();
       try {
         const entries = await fs.promises.readdir(cacheDir, { withFileTypes: true });
         for (const e of entries) {
@@ -1297,7 +1330,10 @@ ipcMain.handle('setup-install-all', async (_event, { gameDir }) => {
   };
 
   const results = {};
-  const dxvkCacheDir = path.join(gameDir, '_dxvk-cache');
+  const dxvkCacheDir = getDxvkCacheDir();
+
+  // One-time cleanup for users coming from <2.0.5 (legacy in-game-dir cache)
+  await migrateLegacyDxvkCache(gameDir);
 
   for (const comp of SETUP_COMPONENTS) {
     // Skip if already installed — saves bandwidth + time on re-runs
@@ -2189,22 +2225,28 @@ ipcMain.handle('set-steam-overlay', async (_event, { appId, enabled }) => {
 });
 
 async function findDxvkSourceDll(gameDir) {
-  const cacheDir = path.join(gameDir, '_dxvk-cache');
-  try {
-    const entries = await fs.promises.readdir(cacheDir, { withFileTypes: true });
-    for (const e of entries) {
-      if (!e.isDirectory() || !/^dxvk-/i.test(e.name)) continue;
-      const candidate = path.join(cacheDir, e.name, 'x32', 'd3d9.dll');
-      try { await fs.promises.access(candidate); return candidate; } catch {}
-    }
-  } catch {}
+  // Primary location: %TEMP%/dp1-launcher-cache/dxvk/. Legacy fallback:
+  // <gameDir>/_dxvk-cache (for installs that haven't been re-set-up since
+  // 2.0.5). Migration removes the legacy dir on next setup-install-all.
+  const candidates = [getDxvkCacheDir()];
+  if (gameDir) candidates.push(path.join(gameDir, '_dxvk-cache'));
+  for (const cacheDir of candidates) {
+    try {
+      const entries = await fs.promises.readdir(cacheDir, { withFileTypes: true });
+      for (const e of entries) {
+        if (!e.isDirectory() || !/^dxvk-/i.test(e.name)) continue;
+        const candidate = path.join(cacheDir, e.name, 'x32', 'd3d9.dll');
+        try { await fs.promises.access(candidate); return candidate; } catch {}
+      }
+    } catch {}
+  }
   return null;
 }
 
 ipcMain.handle('apply-dxvk-auto', async (_event, { gameDir }) => {
   // 1) Locate DXVK x32/d3d9.dll from cache
   const src = await findDxvkSourceDll(gameDir);
-  if (!src) return { success: false, error: 'DXVK source not found in _dxvk-cache' };
+  if (!src) return { success: false, error: 'DXVK source not found — install via setup wizard' };
 
   // 2) Copy to SysWOW64\d9vk.dll  (admin required)
   try {
@@ -3727,6 +3769,13 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb, skipIn
         await fs.promises.unlink(d9vkSys);
         steps.push('Removed SysWOW64\\d9vk.dll');
       } catch { /* not present */ }
+      // User opted out of DXVK — purge the cached distribution from %TEMP%
+      // so we don't keep 50+ MB of unused DXVK files around. Setup wizard
+      // will re-download on next run if user changes their mind.
+      try {
+        await fs.promises.rm(getDxvkCacheDir(), { recursive: true, force: true });
+        steps.push('Cleaned %TEMP% DXVK cache (preset is DPfix-only)');
+      } catch { /* not fatal */ }
       break;
     }
     default:

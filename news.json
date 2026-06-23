@@ -1,5 +1,13 @@
 [
   {
+    "title_uk":   "🧹 v2.0.5 — DXVK cache переїхав у %TEMP%, без сміття у теці гри",
+    "title_en":   "🧹 v2.0.5 — DXVK cache moved to %TEMP%, no clutter in the game folder",
+    "excerpt_uk": "До 2.0.5 лаунчер розпаковував завантажений DXVK у `<gameDir>/_dxvk-cache/` — близько 50 МБ архіву залишались у теці гри навіть тих, хто обрав «Тільки DPfix» і ніколи не вмикав DXVK. У 2.0.5 ця тека переїхала в `%TEMP%/dp1-launcher-cache/dxvk/` — поза теками Steam-гри. Бонус: при apply-preset «Тільки DPfix» лаунчер ще й автоматично видаляє цей temp-кеш (бо ти явно опт-аутнув із Vulkan-рендеру). Для тих, у кого вже є legacy `_dxvk-cache/` у грі — лаунчер його видалить при першому запуску і при наступному запуску setup-wizard.",
+    "excerpt_en": "Before 2.0.5 the launcher extracted the downloaded DXVK archive into `<gameDir>/_dxvk-cache/` — about 50 MB of files sitting in the game folder even for users who picked \"DPfix only\" and never enabled DXVK. In 2.0.5 that directory moved to `%TEMP%/dp1-launcher-cache/dxvk/` — off the Steam install. Bonus: when the apply-preset is \"DPfix only\" the launcher also auto-purges that temp cache (you explicitly opted out of the Vulkan renderer). For users who already have a legacy `_dxvk-cache/` inside the game folder — the launcher cleans it up on first start and again on the next setup-wizard run.",
+    "date":       "June 15, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v2.0.5"
+  },
+  {
     "title_uk":   "⏭ v2.0.4 — Skip Intro повернуто (працює ОСТАННІМ кроком, після 4GB + DPfix)",
     "title_en":   "⏭ v2.0.4 — Skip Intro restored (must be applied LAST, after 4GB + DPfix)",
     "excerpt_uk": "Автор 010-Editor-ом протестував Skip Intro byte-patch (0x243333: B3 → 00) на новому Steam-build (SHA DDDB03DF…) — і він ПРАЦЮЄ! Але тільки якщо застосувати ТРЕТІМ кроком, після 4GB Patch і встановлення DPfix. У попередніх версіях лаунчер ставив Skip Intro ПЕРШИМ через помилкову checksum-теорію — від цього гра падала. У 2.0.4: чекбокс Skip Intro повернуто у Step 2 wizard (default ON) і у Accessibility tab. У `apply-preset` порядок тепер: (1) 4GB Patch → (2) DLL chain для пресета → (3) Skip Intro byte → (4) config.cnf sync. Backup `DeadlyPremonition.exe_with_video` створюється перед патчем — revert через existing IPC.",
