@@ -1,5 +1,13 @@
 [
   {
+    "title_uk":   "🎛 v2.0.3 — hotfix: Quality preset = field-tested defaults, config.cnf FULLSCREEN тепер 1 за замовчуванням",
+    "title_en":   "🎛 v2.0.3 — hotfix: Quality preset = field-tested defaults, config.cnf FULLSCREEN now defaults to 1",
+    "excerpt_uk": "Маленький hotfix після 2.0.2. (1) Quality preset тепер 1:1 копіює author's working DPfix.ini — змінено лише aaType зі SMAA на FXAA (на тестах саме воно дає кращу картинку на DPC). Решта параметрів (shadows 8×, reflections 8×, SSAO VSSAO2 high, improveDOF, 16× AF) збігаються із попереднім Quality. (2) Виправлена логіка sync для config.cnf — раніше при borderless=1 лаунчер форсив FULLSCREEN=0, але field-test показав що FULLSCREEN=1 + borderless=1 = working combo на новому Steam build. Тепер: forceWindowed=1 → FULLSCREEN=0 (плейн віконний режим), інакше → FULLSCREEN=1.",
+    "excerpt_en": "Small hotfix after 2.0.2. (1) Quality preset now mirrors the author's working DPfix.ini 1:1 — only aaType changed from SMAA to FXAA (testing showed it gives a cleaner image on DPC). All other parameters (shadows 8×, reflections 8×, SSAO VSSAO2 high, improveDOF, 16× AF) match the previous Quality. (2) Fixed config.cnf sync logic — earlier the launcher forced FULLSCREEN=0 when borderless=1, but field testing showed FULLSCREEN=1 + borderless=1 is the working combo on the new Steam build. New rule: forceWindowed=1 → FULLSCREEN=0 (plain windowed), otherwise → FULLSCREEN=1.",
+    "date":       "June 15, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v2.0.3"
+  },
+  {
     "title_uk":   "🛠 v2.0.2 — велика діагностична сесія: Skip Intro прибрано, DPfix borderless працює, System Diagnostics",
     "title_en":   "🛠 v2.0.2 — major diagnostic session: Skip Intro removed, DPfix borderless restored, System Diagnostics",
     "excerpt_uk": "Велика годинна дослідницька сесія на свіжому Steam-build виявила РЕАЛЬНУ причину чомусь гра падала з лаунчером. Skip Intro byte-patch (0x243333: B3→00) — той самий що описаний у всіх community-гайдах — на новому Steam-build (SHA DDDB03DF…) ламає game init. Прибрали з UI. Натомість DPfix-овий borderlessFullscreen=1 (раніше думали що це він винний) насправді працює ідеально — повернули як default. Step 2 wizard тепер пише (forceWindowed=0, borderlessFullscreen=1, FULLSCREEN=0) — підтверджена working комбінація. Графіка → Resolution тепер чітко позначена як «Роздільна здатність рендерингу» (supersampling target), а не розмір вікна — щоб не плутали. Додано картку «Системна діагностика» у Stability: PhysX runtime / Steam Overlay / LAV Filters / monitor count з відповідними діями. Auto-create savedata/, single-instance lock, reboot reminder на Step 3, версія тепер автодинамічно з app.getVersion().",

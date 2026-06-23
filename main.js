@@ -3520,52 +3520,46 @@ async function applyDpfixWindowDefaults(gameDir) {
   }
 }
 
-// Sync config.cnf's FULLSCREEN flag with DPfix.ini's window mode so the
-// game and DPfix can't end up disagreeing (the classic init deadlock).
+// Sync config.cnf's FULLSCREEN flag with DPfix.ini's window mode.
 //
-// Field-tested on Steam build SHA D7FC3C72:
-//   (forceWindowed 0, borderless 0, FULLSCREEN 1) → real fullscreen ✓
-//   (forceWindowed 0, borderless 0, FULLSCREEN 0) → windowed ✓
-//   (forceWindowed 1, borderless 1, FULLSCREEN 1) → init hang ✗
-//   (forceWindowed 0, borderless 1, FULLSCREEN 0) → black screen ✗
+// Field-tested on Steam build SHA DDDB03DF (no Skip Intro patch). The
+// author's confirmed-working everyday config is:
+//   DPfix:      forceWindowed=0, borderlessFullscreen=1
+//   config.cnf: FULLSCREEN=1
 //
-// Rule we follow: if DPfix has both flags at 0 (the stock state), leave
-// config.cnf FULLSCREEN as-is — the user's choice in the game / launcher
-// applies. If DPfix forces a windowed-style mode, we set FULLSCREEN=0 so
-// the game doesn't fight it.
+// Rule we follow:
+//   • DPfix forceWindowed=1 (plain windowed) → config.cnf FULLSCREEN=0
+//     (avoid the game's own "go to exclusive fullscreen" code path
+//     fighting DPfix's window-managed mode).
+//   • Anything else (DPfix borderless=1 or both flags 0) → config.cnf
+//     FULLSCREEN=1, matching the wizard default and the working setup.
 async function syncConfigCnfWithDpfix(gameDir) {
   const cfgPath = path.join(gameDir, 'config.cnf');
   const iniPath = path.join(gameDir, 'DPfix.ini');
   if (!(await exists(cfgPath))) {
     return 'config.cnf not found (game will create it on first run)';
   }
-  // Probe DPfix.ini to see what window mode it wants.
   let dpfixForceWindowed = 0;
-  let dpfixBorderless    = 0;
   if (await exists(iniPath)) {
     try {
       const ini = await fs.promises.readFile(iniPath, 'utf8');
       const fw  = /^[\t ]*forceWindowed[\t ]+(\d+)/im.exec(ini);
-      const bl  = /^[\t ]*borderlessFullscreen[\t ]+(\d+)/im.exec(ini);
       dpfixForceWindowed = fw ? parseInt(fw[1], 10) : 0;
-      dpfixBorderless    = bl ? parseInt(bl[1], 10) : 0;
     } catch { /* leave defaults */ }
   }
-  // Stock DPfix (0, 0) → don't touch FULLSCREEN; user's game-side choice wins.
-  if (dpfixForceWindowed === 0 && dpfixBorderless === 0) {
-    return 'config.cnf: FULLSCREEN left unchanged (DPfix in stock fullscreen-pass-through mode)';
-  }
-  // Anything else (DPfix forcing a windowed style) → FULLSCREEN must be 0.
+  const targetValue = dpfixForceWindowed === 1 ? '0' : '1';
   try {
     const content = await fs.promises.readFile(cfgPath, 'utf8');
     const re = /^([\t ]*FULLSCREEN[\t ]*=[\t ]*)\d+([\t ]*)$/im;
     if (!re.test(content)) {
       return 'config.cnf: FULLSCREEN key not present yet — skipped';
     }
-    const replaced = content.replace(re, (_, pre, post) => `${pre}0${post}`);
-    if (replaced === content) return 'config.cnf: FULLSCREEN already 0 (matches DPfix windowed mode)';
+    const replaced = content.replace(re, (_, pre, post) => `${pre}${targetValue}${post}`);
+    if (replaced === content) {
+      return `config.cnf: FULLSCREEN already ${targetValue} (matches DPfix mode)`;
+    }
     await fs.promises.writeFile(cfgPath, replaced, 'utf8');
-    return 'config.cnf: FULLSCREEN → 0 (synced to DPfix forced-windowed)';
+    return `config.cnf: FULLSCREEN → ${targetValue} (synced to DPfix mode)`;
   } catch (e) {
     return `config.cnf edit failed: ${e.message}`;
   }

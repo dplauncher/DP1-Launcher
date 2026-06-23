@@ -412,10 +412,15 @@ const GFX_BUILTIN_PRESETS = {
   },
   quality: {
     label:    'Quality',
-    desc:     'Максимальна якість графіки',
+    desc:     'Максимальна якість графіки (field-tested, recommended)',
     settings: {
+      // Field-tested values copied from author's working DPfix.ini on
+      // a fresh Steam build (SHA DDDB03DF…). aaType is FXAA, not SMAA —
+      // FXAA gives cleaner results on DPC's specific texture content.
+      // addDOFBlur is 1 (matches 1080p-class present), bump to 2 only
+      // if running 4K supersampling.
       'aa-quality':       '4',
-      'aa-type':          'SMAA',
+      'aa-type':          'FXAA',
       'filtering':        '2',
       'shadow-scale':     '4',
       'shadow-precision': true,
