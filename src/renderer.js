@@ -3337,11 +3337,10 @@ async function onFirstRunApplyPreset() {
   if (!gameDir) return;
   const selected = document.querySelector('input[name="firstrun-preset"]:checked')?.value || 'dpfix-only';
   const with4gb  = $('opt-4gb')?.checked || false;
-  // Skip Intro disabled in 2.0.2 — the byte at offset 0x243333 isn't the
-  // intro-control flag in the current Steam build (SHA DDDB03DF…), patching
-  // it hangs the game on launch. The wizard checkbox is hidden, the IPC
-  // handler is preserved for manual testing on older builds.
-  const withSkipIntro = false;
+  // Skip Intro restored in 2.0.4 — confirmed working on Steam build
+  // SHA DDDB03DF when applied LAST in apply-preset (after 4GB Patch +
+  // DLL chain). Default ON in the wizard.
+  const withSkipIntro = $('opt-skip-intro')?.checked !== false;
 
   // Remember choice so the step-3 done list can show only what was installed
   firstRunState.lastPreset      = selected;

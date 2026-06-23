@@ -1,5 +1,13 @@
 [
   {
+    "title_uk":   "⏭ v2.0.4 — Skip Intro повернуто (працює ОСТАННІМ кроком, після 4GB + DPfix)",
+    "title_en":   "⏭ v2.0.4 — Skip Intro restored (must be applied LAST, after 4GB + DPfix)",
+    "excerpt_uk": "Автор 010-Editor-ом протестував Skip Intro byte-patch (0x243333: B3 → 00) на новому Steam-build (SHA DDDB03DF…) — і він ПРАЦЮЄ! Але тільки якщо застосувати ТРЕТІМ кроком, після 4GB Patch і встановлення DPfix. У попередніх версіях лаунчер ставив Skip Intro ПЕРШИМ через помилкову checksum-теорію — від цього гра падала. У 2.0.4: чекбокс Skip Intro повернуто у Step 2 wizard (default ON) і у Accessibility tab. У `apply-preset` порядок тепер: (1) 4GB Patch → (2) DLL chain для пресета → (3) Skip Intro byte → (4) config.cnf sync. Backup `DeadlyPremonition.exe_with_video` створюється перед патчем — revert через existing IPC.",
+    "excerpt_en": "Author tested the Skip Intro byte-patch (0x243333: B3 → 00) via 010 Editor on the new Steam build (SHA DDDB03DF…) — and it WORKS! But only when applied as the third step, after 4GB Patch and DPfix install. In previous versions the launcher applied Skip Intro FIRST due to a faulty checksum theory — that's what was crashing the game. In 2.0.4: Skip Intro checkbox restored in Step 2 wizard (default ON) and in the Accessibility tab. The apply-preset order is now: (1) 4GB Patch → (2) DLL chain for the preset → (3) Skip Intro byte → (4) config.cnf sync. Backup `DeadlyPremonition.exe_with_video` is created before patching — revert via the existing IPC.",
+    "date":       "June 15, 2026",
+    "url":        "https://github.com/dplauncher/DP1-Launcher/releases/tag/v2.0.4"
+  },
+  {
     "title_uk":   "🎛 v2.0.3 — hotfix: Quality preset = field-tested defaults, config.cnf FULLSCREEN тепер 1 за замовчуванням",
     "title_en":   "🎛 v2.0.3 — hotfix: Quality preset = field-tested defaults, config.cnf FULLSCREEN now defaults to 1",
     "excerpt_uk": "Маленький hotfix після 2.0.2. (1) Quality preset тепер 1:1 копіює author's working DPfix.ini — змінено лише aaType зі SMAA на FXAA (на тестах саме воно дає кращу картинку на DPC). Решта параметрів (shadows 8×, reflections 8×, SSAO VSSAO2 high, improveDOF, 16× AF) збігаються із попереднім Quality. (2) Виправлена логіка sync для config.cnf — раніше при borderless=1 лаунчер форсив FULLSCREEN=0, але field-test показав що FULLSCREEN=1 + borderless=1 = working combo на новому Steam build. Тепер: forceWindowed=1 → FULLSCREEN=0 (плейн віконний режим), інакше → FULLSCREEN=1.",

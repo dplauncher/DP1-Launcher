@@ -3572,41 +3572,6 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb, skipIn
   const steps = [];
   const exePath = path.join(gameDir, 'DP.exe');
 
-  // 0. Apply Skip Intro byte patch FIRST (before 4GB Patch).
-  //
-  // ORDER MATTERS. NTCore's 4gb_patch.exe finalises the PE checksum after
-  // it flips the LARGE_ADDRESS_AWARE bit. If we patch the Skip Intro byte
-  // (B3 → 00 @ 0x243333) AFTER NTCore runs, the checksum field still
-  // describes the pre-Skip-Intro content — mismatch crashes the game on
-  // some Steam builds (confirmed in v2.0.1 user-report investigation).
-  // Doing Skip Intro first lets NTCore include the byte change in the
-  // checksum it computes for us.
-  if (skipIntro) {
-    try {
-      const SKIP_INTRO_OFFSET   = 0x243333;
-      const SKIP_INTRO_ORIGINAL = 0xB3;
-      const SKIP_INTRO_PATCHED  = 0x00;
-      const fh = await fs.promises.open(exePath, 'r+');
-      const buf = Buffer.alloc(1);
-      await fh.read(buf, 0, 1, SKIP_INTRO_OFFSET);
-      if (buf[0] === SKIP_INTRO_PATCHED) {
-        await fh.close();
-        steps.push('Skip Intro already applied');
-      } else if (buf[0] !== SKIP_INTRO_ORIGINAL) {
-        await fh.close();
-        steps.push(`Skip Intro skipped: unexpected byte 0x${buf[0].toString(16).padStart(2,'0').toUpperCase()} at 0x${SKIP_INTRO_OFFSET.toString(16)} — unknown DP.exe build`);
-      } else {
-        // Backup BEFORE writing so revert later is possible
-        await makeBackup(exePath, BACKUP_LABELS.exeWithVideo);
-        await fh.write(Buffer.from([SKIP_INTRO_PATCHED]), 0, 1, SKIP_INTRO_OFFSET);
-        await fh.close();
-        steps.push('Skip Intro applied ✓ (B3 → 00 @ 0x243333, backup → exe_backup/DeadlyPremonition.exe_with_video)');
-      }
-    } catch (e) {
-      steps.push(`Skip Intro error: ${e.message}`);
-    }
-  }
-
   // 1. Apply 4GB patch if requested
   if (with4gb) {
     try {
@@ -3766,6 +3731,38 @@ ipcMain.handle('apply-preset', async (_event, { gameDir, preset, with4gb, skipIn
     }
     default:
       return { success: false, error: `Unknown preset: ${preset}` };
+  }
+
+  // 3. Skip Intro byte patch — applied LAST, after 4GB Patch and the
+  //    DLL chain. Field-test on Steam build SHA DDDB03DF showed this
+  //    specific order works: clean exe → 4GB Patch → DPfix install →
+  //    Skip Intro. Patching first (before NTCore) breaks the build.
+  //    The user used 010 Editor in their manual test — equivalent to
+  //    our raw byte write here.
+  if (skipIntro) {
+    try {
+      const SKIP_INTRO_OFFSET   = 0x243333;
+      const SKIP_INTRO_ORIGINAL = 0xB3;
+      const SKIP_INTRO_PATCHED  = 0x00;
+      const fh = await fs.promises.open(exePath, 'r+');
+      const buf = Buffer.alloc(1);
+      await fh.read(buf, 0, 1, SKIP_INTRO_OFFSET);
+      if (buf[0] === SKIP_INTRO_PATCHED) {
+        await fh.close();
+        steps.push('Skip Intro already applied');
+      } else if (buf[0] !== SKIP_INTRO_ORIGINAL) {
+        await fh.close();
+        steps.push(`Skip Intro skipped: unexpected byte 0x${buf[0].toString(16).padStart(2,'0').toUpperCase()} at 0x${SKIP_INTRO_OFFSET.toString(16)} — unknown DP.exe build`);
+      } else {
+        // Backup BEFORE writing so revert later is possible
+        await makeBackup(exePath, BACKUP_LABELS.exeWithVideo);
+        await fh.write(Buffer.from([SKIP_INTRO_PATCHED]), 0, 1, SKIP_INTRO_OFFSET);
+        await fh.close();
+        steps.push('Skip Intro applied ✓ (B3 → 00 @ 0x243333, backup → exe_backup/DeadlyPremonition.exe_with_video)');
+      }
+    } catch (e) {
+      steps.push(`Skip Intro error: ${e.message}`);
+    }
   }
 
   // Force config.cnf FULLSCREEN = 0 so DPfix's borderlessFullscreen=1 wins
